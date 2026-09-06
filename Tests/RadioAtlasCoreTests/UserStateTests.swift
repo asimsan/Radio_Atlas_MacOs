@@ -54,4 +54,28 @@ final class UserStateTests: XCTestCase {
         state.toggleFavorite("a")
         XCTAssertFalse(state.favoriteStationIDs.contains("a"))
     }
+
+    // MARK: - clearRecents
+
+    func testClearRecentsEmptiesListeningHistory() {
+        var state = UserState.empty
+        state.recordPlay("a")
+        state.recordPlay("b")
+        XCTAssertEqual(state.recentStationIDs, ["b", "a"])
+
+        state.clearRecents()
+
+        XCTAssertTrue(state.recentStationIDs.isEmpty)
+    }
+
+    func testClearRecentsLeavesFavoritesUntouched() {
+        var state = UserState.empty
+        state.toggleFavorite("a")
+        state.recordPlay("a")
+
+        state.clearRecents()
+
+        XCTAssertEqual(state.favoriteStationIDs, ["a"])
+        XCTAssertTrue(state.recentStationIDs.isEmpty)
+    }
 }

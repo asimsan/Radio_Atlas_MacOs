@@ -60,6 +60,14 @@ public final class PlaybackController: ObservableObject {
         }
     }
 
+    /// Pauses playback when playing (used by the sleep timer); no-op in any
+    /// other status.
+    public func pause() {
+        if case .playing = status {
+            player.pause()
+        }
+    }
+
     public var currentStation: Station? {
         switch status {
         case .idle: return nil

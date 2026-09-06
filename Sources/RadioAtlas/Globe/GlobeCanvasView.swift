@@ -34,9 +34,12 @@ struct GlobeCanvasView: View {
     // so a refresh changes the bands smoothly instead of jumping.
     @State private var smoothedNorthConfig = AuroraBandConfig.fallback
     @State private var smoothedSouthConfig = AuroraBandConfig.fallback
-    // Sunburst rotation phase (radians) — advanced every tick; also drives
-    // the twinkle and flare envelopes via `SparkleMath`.
+    // Sparkle animation phase (radians) — advanced every tick; drives the
+    // border glow pulse, glints, and the playing dot's pulse.
     @State private var sparklePhase: Double = 0
+    /// The station under the pointer (nil while hovering nothing) — shows
+    /// the hover tooltip; cleared on drag so it never lingers mid-spin.
+    @State private var hoveredStation: Station?
 
     private enum Palette {
         static let paneBackground = Color(hex: 0x090A0C)
@@ -117,6 +120,15 @@ struct GlobeCanvasView: View {
                         factor: blend
                     )
                 }
+                .onContinuousHover(coordinateSpace: .local) { phase in
+                    switch phase {
+                    case .active(let location):
+                        hoveredStation = nearestStation(at: location, in: size)
+                    case .ended:
+                        hoveredStation = nil
+                    }
+                }
+                .overlay(alignment: .topLeading) { stationTooltip(size: size) }
             }
             .onChange(of: playingCountryCode) { newCode in
                 guard let newCode else { return }
@@ -141,6 +153,7 @@ struct GlobeCanvasView: View {
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
+                        hoveredStation = nil
                         let deltaX = value.translation.width - lastDragTranslation.width
                         let deltaY = value.translation.height - lastDragTranslation.height
                         interaction.applyDrag(deltaX: deltaX, deltaY: deltaY)
@@ -323,6 +336,31 @@ struct GlobeCanvasView: View {
             let dotRect = CGRect(x: screenPoint.x - dotRadius, y: screenPoint.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
             context.fill(Path(ellipseIn: dotRect), with: .color(Palette.stationDot))
         }
+
+        // The playing station's dot: gold, larger, pulsing, with a breathing
+        // halo ring — the exact signal the country highlight surrounds.
+        if let playingStation, let latitude = playingStation.latitude, let longitude = playingStation.longitude {
+            let projected = GlobeProjection.project(
+                GeoPoint(latitude: latitude, longitude: longitude),
+                centerLatitude: interaction.centerLatitude, centerLongitude: interaction.centerLongitude,
+                scale: interaction.scale, viewRadius: viewRadius
+            )
+            guard projected.isFrontFacing else { return }
+            let screenPoint = CGPoint(x: center.x + projected.point.x, y: center.y + projected.point.y)
+            let pulse = 0.5 + 0.5 * sin(sparklePhase * 4)
+
+            let dotRadius = 2.6 + 1.2 * pulse
+            let dotRect = CGRect(x: screenPoint.x - dotRadius, y: screenPoint.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
+            context.fill(Path(ellipseIn: dotRect), with: .color(Palette.playingCountryHighlight))
+
+            let ringRadius = 4.5 + 2.5 * pulse
+            let ringRect = CGRect(x: screenPoint.x - ringRadius, y: screenPoint.y - ringRadius, width: ringRadius * 2, height: ringRadius * 2)
+            context.stroke(
+                Path(ellipseIn: ringRect),
+                with: .color(Palette.playingCountryHighlight.opacity(0.35 + 0.35 * pulse)),
+                lineWidth: 1
+            )
+        }
     }
 
     // MARK: - Aurora
@@ -486,13 +524,15 @@ struct GlobeCanvasView: View {
 
     // MARK: - Hit testing
 
-    private func handleTap(at tapPoint: CGPoint, in size: CGSize) {
+    /// The front-facing station dot within `hitRadius` of the given point in
+    /// the globe's local coordinate space — shared by tap and hover.
+    private func nearestStation(at tapPoint: CGPoint, in size: CGSize) -> Station? {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let viewRadius = min(size.width, size.height) * 0.44
         let relative = CGPoint(x: tapPoint.x - center.x, y: tapPoint.y - center.y)
         let hitRadius: CGFloat = 8
 
-        var nearestStation: Station?
+        var nearest: Station?
         var nearestDistance: CGFloat = .infinity
         for station in stations {
             guard let latitude = station.latitude, let longitude = station.longitude else { continue }
@@ -507,14 +547,21 @@ struct GlobeCanvasView: View {
             let distance = (dx * dx + dy * dy).squareRoot()
             if distance <= hitRadius && distance < nearestDistance {
                 nearestDistance = distance
-                nearestStation = station
+                nearest = station
             }
         }
+        return nearest
+    }
 
-        if let nearestStation {
-            onStationTapped(nearestStation)
+    private func handleTap(at tapPoint: CGPoint, in size: CGSize) {
+        if let station = nearestStation(at: tapPoint, in: size) {
+            onStationTapped(station)
             return
         }
+
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let viewRadius = min(size.width, size.height) * 0.44
+        let relative = CGPoint(x: tapPoint.x - center.x, y: tapPoint.y - center.y)
 
         guard let geoPoint = GlobeProjection.unproject(
             relative, centerLatitude: interaction.centerLatitude, centerLongitude: interaction.centerLongitude,
@@ -527,6 +574,39 @@ struct GlobeCanvasView: View {
             onCountryTapped(isoCode)
         }
         // Otherwise: open ocean — do nothing, per spec.
+    }
+
+    /// A small name card floating above the hovered station's dot, tracking
+    /// it as the globe rotates underneath.
+    @ViewBuilder
+    private func stationTooltip(size: CGSize) -> some View {
+        if let station = hoveredStation,
+           let latitude = station.latitude, let longitude = station.longitude {
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let viewRadius = min(size.width, size.height) * 0.44
+            let projected = GlobeProjection.project(
+                GeoPoint(latitude: latitude, longitude: longitude),
+                centerLatitude: interaction.centerLatitude,
+                centerLongitude: interaction.centerLongitude,
+                scale: interaction.scale,
+                viewRadius: viewRadius
+            )
+            if projected.isFrontFacing {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(station.name)
+                    Text("\(station.countryCode) · \(station.bitrateKbps) kbps")
+                        .opacity(0.6)
+                }
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Color(hex: 0xC8C8C8))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color(hex: 0x1A1A24).opacity(0.95))
+                .cornerRadius(4)
+                .offset(x: center.x + projected.point.x, y: center.y + projected.point.y - 26)
+                .allowsHitTesting(false)
+            }
+        }
     }
 }
 

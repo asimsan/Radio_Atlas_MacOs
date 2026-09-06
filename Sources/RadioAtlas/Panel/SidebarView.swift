@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @ObservedObject var viewModel: PanelViewModel
+    @State private var confirmClearRecents = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +35,31 @@ struct SidebarView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(Palette.dim)
                     .help("Exit country browse")
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 32)
+                Rectangle().fill(Palette.divider).frame(height: 1)
+            }
+
+            // Recent-tab header: history count and a confirmed way to clear it.
+            if viewModel.selectedTab == .recent, !viewModel.displayedStations.isEmpty {
+                HStack {
+                    Text("\(viewModel.displayedStations.count) stations")
+                        .font(Palette.monoCaption)
+                        .foregroundStyle(Palette.dim)
+                    Spacer()
+                    Button {
+                        confirmClearRecents = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Palette.dim)
+                    .help("Clear listening history")
+                    .confirmationDialog("Clear listening history?", isPresented: $confirmClearRecents) {
+                        Button("Clear History", role: .destructive) { viewModel.clearRecentHistory() }
+                        Button("Cancel", role: .cancel) {}
+                    }
                 }
                 .padding(.horizontal, 16)
                 .frame(height: 32)
@@ -75,7 +101,9 @@ struct SidebarView: View {
                 outputDevices: viewModel.outputDevices,
                 selectedOutputDeviceID: viewModel.selectedOutputDeviceID,
                 onSelectOutputDevice: viewModel.selectOutputDevice,
-                onRetry: { viewModel.retryFailedStation() }
+                onRetry: { viewModel.retryFailedStation() },
+                sleepFireDate: viewModel.sleepFireDate,
+                onScheduleSleep: { viewModel.scheduleSleep(minutes: $0) }
             )
         }
         .background(Palette.background)
@@ -90,7 +118,11 @@ struct SidebarView: View {
 
     private var emptyStateText: String {
         switch viewModel.selectedTab {
-        case .world: return "No working stations found."
+        case .world:
+            if !viewModel.searchQuery.isEmpty {
+                return "No stations match \"\(viewModel.searchQuery)\"."
+            }
+            return "No working stations found."
         case .favorites: return "No favorites yet. Select a station and press F."
         case .recent: return "No listening history yet."
         }

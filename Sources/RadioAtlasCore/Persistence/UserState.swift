@@ -29,4 +29,10 @@ public struct UserState: Codable, Equatable {
             favoriteStationIDs.insert(stationID)
         }
     }
+
+    /// Empties the listening history (the Recent tab's source). Favorites
+    /// are untouched.
+    public mutating func clearRecents() {
+        recentStationIDs.removeAll()
+    }
 }

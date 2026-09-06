@@ -116,4 +116,31 @@ final class PlaybackControllerTests: XCTestCase {
         XCTAssertTrue(controller.isMuted)
         XCTAssertEqual(controller.volume, 0)
     }
+
+    // MARK: - pause
+
+    func testPauseStopsAPlayingStream() {
+        let player = FakeStreamPlayer()
+        let controller = PlaybackController(player: player)
+        let station = station("a")
+        player.onStatusChange?(.playing(station))
+
+        controller.pause()
+
+        XCTAssertEqual(player.pauseCallCount, 1)
+        // Status transitions are driven by the player's callback, not by
+        // pause() itself.
+        if case .playing = controller.status {} else {
+            XCTFail("expected playing status")
+        }
+    }
+
+    func testPauseDoesNothingWhenNotPlaying() {
+        let player = FakeStreamPlayer()
+        let controller = PlaybackController(player: player)
+
+        controller.pause()
+
+        XCTAssertEqual(player.pauseCallCount, 0)
+    }
 }

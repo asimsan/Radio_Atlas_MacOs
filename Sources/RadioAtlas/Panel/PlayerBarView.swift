@@ -9,6 +9,8 @@ struct PlayerBarView: View {
     let selectedOutputDeviceID: String?
     let onSelectOutputDevice: (OutputDevice) -> Void
     let onRetry: () -> Void
+    let sleepFireDate: Date?
+    let onScheduleSleep: (Int?) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -59,6 +61,26 @@ struct PlayerBarView: View {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                 }
                 Button(action: playbackController.next) { Image(systemName: "forward.end.fill") }
+                Menu {
+                    Button("Off") { onScheduleSleep(nil) }
+                    Divider()
+                    Button("15 minutes") { onScheduleSleep(15) }
+                    Button("30 minutes") { onScheduleSleep(30) }
+                    Button("60 minutes") { onScheduleSleep(60) }
+                } label: {
+                    Image(systemName: sleepFireDate != nil ? "moon.zzz.fill" : "moon.zzz")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .foregroundStyle(Palette.foreground)
+                .help("Sleep timer")
+                if sleepFireDate != nil {
+                    TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                        Text(remainingText(at: timeline.date))
+                            .font(Palette.monoCaption)
+                            .foregroundStyle(Palette.dim)
+                    }
+                }
                 Spacer()
                 OutputPickerView(
                     devices: outputDevices,
@@ -110,5 +132,10 @@ struct PlayerBarView: View {
     private var statusColor: Color {
         if case .failed = playbackController.status { return Palette.urgent }
         return Palette.dim
+    }
+
+    private func remainingText(at date: Date) -> String {
+        let remaining = max(0, Int((sleepFireDate ?? date).timeIntervalSince(date)))
+        return String(format: "%d:%02d", remaining / 60, remaining % 60)
     }
 }

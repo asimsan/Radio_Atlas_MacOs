@@ -55,6 +55,7 @@ final class PanelViewModel: ObservableObject {
     private let randomTuner = RandomTuner()
     private let outputDeviceProvider: OutputDeviceProviding = CoreAudioOutputDeviceProvider()
     private let auroraMonitor = AuroraMonitor()
+    let sleepTimer = SleepTimer()
     /// Top-stations load/refresh errors, kept separate from country-fetch
     /// errors so `updateStatusMessage()` can compose them with a stable
     /// priority.
@@ -221,6 +222,30 @@ final class PanelViewModel: ObservableObject {
         objectWillChange.send()
         userState.toggleFavorite(station.id)
         try? stateStore.save(userState)
+    }
+
+    /// Clears the listening history backing the Recent tab.
+    func clearRecentHistory() {
+        objectWillChange.send()
+        userState.clearRecents()
+        try? stateStore.save(userState)
+    }
+
+    /// The sleep timer's expiry (nil when inactive) — drives the player
+    /// bar's countdown display.
+    var sleepFireDate: Date? { sleepTimer.fireDate }
+
+    /// Schedules a sleep timer for `minutes`, or cancels it with nil. When
+    /// it fires, playback pauses.
+    func scheduleSleep(minutes: Int?) {
+        if let minutes {
+            sleepTimer.schedule(seconds: Double(minutes) * 60) { [weak self] in
+                self?.playbackController.pause()
+            }
+        } else {
+            sleepTimer.cancel()
+        }
+        objectWillChange.send()
     }
 
     func refreshOutputDevices() {
