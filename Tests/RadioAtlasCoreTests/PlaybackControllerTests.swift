@@ -3,11 +3,11 @@ import XCTest
 
 final class FakeStreamPlayer: StreamPlaying {
     var onStatusChange: ((PlaybackStatus) -> Void)?
-    private(set) var playedURLs: [URL] = []
+    private(set) var playedStations: [Station] = []
     private(set) var pauseCallCount = 0
     private(set) var lastOutputDeviceUID: String??
 
-    func play(url: URL) { playedURLs.append(url) }
+    func play(station: Station) { playedStations.append(station) }
     func pause() { pauseCallCount += 1 }
     func stop() {}
     func setVolume(_ volume: Float) {}
@@ -28,7 +28,7 @@ final class PlaybackControllerTests: XCTestCase {
 
         controller.setQueue(stations, startAt: 1)
 
-        XCTAssertEqual(player.playedURLs, [stations[1].streamURL])
+        XCTAssertEqual(player.playedStations.map(\.streamURL), [stations[1].streamURL])
         XCTAssertEqual(controller.currentIndex, 1)
     }
 
@@ -41,7 +41,7 @@ final class PlaybackControllerTests: XCTestCase {
         controller.next()
 
         XCTAssertEqual(controller.currentIndex, 0)
-        XCTAssertEqual(player.playedURLs.last, stations[0].streamURL)
+        XCTAssertEqual(player.playedStations.last?.streamURL, stations[0].streamURL)
     }
 
     func testPreviousWrapsAroundToEndOfQueue() {
@@ -53,7 +53,7 @@ final class PlaybackControllerTests: XCTestCase {
         controller.previous()
 
         XCTAssertEqual(controller.currentIndex, 1)
-        XCTAssertEqual(player.playedURLs.last, stations[1].streamURL)
+        XCTAssertEqual(player.playedStations.last?.streamURL, stations[1].streamURL)
     }
 
     func testSetOutputDeviceForwardsToPlayer() {

@@ -40,7 +40,7 @@ public final class PlaybackController: ObservableObject {
         case .playing:
             player.pause()
         case .paused(let station), .failed(let station, _):
-            player.play(url: station.streamURL)
+            player.play(station: station)
         default:
             break
         }
@@ -52,6 +52,6 @@ public final class PlaybackController: ObservableObject {
 
     private func playCurrent() {
         guard let index = currentIndex, queue.indices.contains(index) else { return }
-        player.play(url: queue[index].streamURL)
+        player.play(station: queue[index])
     }
 }

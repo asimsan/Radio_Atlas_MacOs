@@ -12,7 +12,7 @@ public enum PlaybackStatus: Equatable {
 /// logic can be unit tested without touching AVFoundation or the network.
 public protocol StreamPlaying: AnyObject {
     var onStatusChange: ((PlaybackStatus) -> Void)? { get set }
-    func play(url: URL)
+    func play(station: Station)
     func pause()
     func stop()
     func setVolume(_ volume: Float)
