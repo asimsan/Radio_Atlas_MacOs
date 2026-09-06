@@ -18,6 +18,7 @@ final class PanelViewModel: ObservableObject {
     @Published var selectedTab: SidebarTab = .world
     @Published var outputDevices: [OutputDevice] = []
     @Published var selectedOutputDeviceID: String?
+    @Published var keyboardSelectedIndex: Int?
 
     let playbackController: PlaybackController
     private(set) var countryLookup: CountryLookup?
@@ -124,5 +125,21 @@ final class PanelViewModel: ObservableObject {
     func playRandom() {
         guard let station = randomTuner.pickStation(from: filteredStations, avoiding: Set(userState.recentStationIDs)) else { return }
         play(station)
+    }
+
+    func moveKeyboardSelection(by delta: Int) {
+        let list = displayedStations
+        guard !list.isEmpty else { keyboardSelectedIndex = nil; return }
+        let current = keyboardSelectedIndex ?? -1
+        keyboardSelectedIndex = ((current + delta) % list.count + list.count) % list.count
+    }
+
+    func playKeyboardSelectedStation() {
+        guard let index = keyboardSelectedIndex, displayedStations.indices.contains(index) else { return }
+        play(displayedStations[index])
+    }
+
+    func retryFailedStation() {
+        playbackController.togglePlayPause()
     }
 }

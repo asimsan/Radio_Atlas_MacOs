@@ -60,6 +60,14 @@ public final class PlaybackController: ObservableObject {
         }
     }
 
+    public var currentStation: Station? {
+        switch status {
+        case .idle: return nil
+        case .loading(let station), .playing(let station), .paused(let station), .failed(let station, _):
+            return station
+        }
+    }
+
     public func setOutputDevice(uid: String?) {
         player.setOutputDeviceUID(uid)
     }

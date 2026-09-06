@@ -8,6 +8,7 @@ struct PlayerBarView: View {
     let outputDevices: [OutputDevice]
     let selectedOutputDeviceID: String?
     let onSelectOutputDevice: (OutputDevice) -> Void
+    let onRetry: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -20,10 +21,23 @@ struct PlayerBarView: View {
                         .fontWeight(isPlaying ? .bold : .regular)
                         .foregroundStyle(Palette.foreground)
                         .lineLimit(1)
-                    Text(statusLine)
-                        .font(Palette.monoCaption)
-                        .foregroundStyle(statusColor)
-                        .lineLimit(1)
+                    if case .failed = playbackController.status {
+                        HStack(spacing: 8) {
+                            Text(statusLine)
+                                .font(Palette.monoCaption)
+                                .foregroundStyle(statusColor)
+                                .lineLimit(1)
+                            Button("Retry", action: onRetry)
+                                .buttonStyle(.plain)
+                                .font(Palette.monoCaption).bold()
+                                .foregroundStyle(Palette.accent)
+                        }
+                    } else {
+                        Text(statusLine)
+                            .font(Palette.monoCaption)
+                            .foregroundStyle(statusColor)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer()
                 if currentStation != nil {
@@ -74,12 +88,7 @@ struct PlayerBarView: View {
         .background(Palette.background)
     }
 
-    private var currentStation: Station? {
-        switch playbackController.status {
-        case .idle: return nil
-        case .loading(let s), .playing(let s), .paused(let s), .failed(let s, _): return s
-        }
-    }
+    private var currentStation: Station? { playbackController.currentStation }
 
     private var isPlaying: Bool {
         if case .playing = playbackController.status { return true }

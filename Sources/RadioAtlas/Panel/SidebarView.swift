@@ -30,12 +30,13 @@ struct SidebarView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(viewModel.displayedStations) { station in
+                        ForEach(Array(viewModel.displayedStations.enumerated()), id: \.element.id) { index, station in
                             VStack(spacing: 0) {
                                 StationRow(
                                     station: station,
                                     isPlaying: isPlaying(station),
                                     isFavorite: viewModel.isFavorite(station),
+                                    isKeyboardSelected: viewModel.keyboardSelectedIndex == index,
                                     onTap: { viewModel.play(station) },
                                     onToggleFavorite: { viewModel.toggleFavorite(station) }
                                 )
@@ -52,19 +53,15 @@ struct SidebarView: View {
                 onToggleFavorite: { if let station = currentStation { viewModel.toggleFavorite(station) } },
                 outputDevices: viewModel.outputDevices,
                 selectedOutputDeviceID: viewModel.selectedOutputDeviceID,
-                onSelectOutputDevice: viewModel.selectOutputDevice
+                onSelectOutputDevice: viewModel.selectOutputDevice,
+                onRetry: { viewModel.retryFailedStation() }
             )
         }
         .background(Palette.background)
         .onAppear { viewModel.refreshOutputDevices() }
     }
 
-    private var currentStation: Station? {
-        switch viewModel.playbackController.status {
-        case .idle: return nil
-        case .loading(let s), .playing(let s), .paused(let s), .failed(let s, _): return s
-        }
-    }
+    private var currentStation: Station? { viewModel.playbackController.currentStation }
 
     private func isPlaying(_ station: Station) -> Bool {
         currentStation?.id == station.id
@@ -83,6 +80,7 @@ private struct StationRow: View {
     let station: Station
     let isPlaying: Bool
     let isFavorite: Bool
+    let isKeyboardSelected: Bool
     let onTap: () -> Void
     let onToggleFavorite: () -> Void
 
@@ -112,6 +110,11 @@ private struct StationRow: View {
         .overlay(alignment: .leading) {
             if isPlaying {
                 Rectangle().fill(Palette.accent).frame(width: 2)
+            }
+        }
+        .overlay {
+            if isKeyboardSelected && !isPlaying {
+                Rectangle().strokeBorder(Palette.accent, lineWidth: 1)
             }
         }
         .contentShape(Rectangle())

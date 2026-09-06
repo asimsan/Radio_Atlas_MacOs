@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HeaderView: View {
     @Binding var searchQuery: String
+    var searchFieldFocus: FocusState<Bool>.Binding
     let helpVisible: Bool
     let onRandom: () -> Void
     let onToggleHelp: () -> Void
@@ -21,6 +22,7 @@ struct HeaderView: View {
                     .background(Palette.elevated)
                     .cornerRadius(4)
                     .frame(maxWidth: 330)
+                    .focused(searchFieldFocus)
                 Button(action: onRandom) { Image(systemName: "shuffle") }
                     .buttonStyle(.plain)
                     .foregroundStyle(Palette.foreground)
