@@ -29,9 +29,18 @@ final class GlobeInteractionState: ObservableObject {
     /// Current kinetic-coast angular velocity (degrees/sec), decomposed so that
     /// `centerLongitude += velocityLongitude * dt` / `centerLatitude += velocityLatitude * dt`
     /// reproduces the same direction of travel the drag was moving in.
-    private(set) var velocityLongitude: Double = 0
-    private(set) var velocityLatitude: Double = 0
-    private(set) var isCoasting: Bool = false
+    ///
+    /// `@Published`, not just `private(set)`: `GlobeCanvasView` reads `isCoasting`
+    /// to drive `TimelineView(.animation(paused: !isCoasting))`, and `ObservableObject`'s
+    /// synthesized `objectWillChange` only fires for `@Published` properties. Without
+    /// this, mutating `isCoasting` here wouldn't by itself trigger a re-render — a prior
+    /// version of this file relied on an unrelated `@State` write in `GlobeCanvasView`'s
+    /// drag `.onEnded` to incidentally force that re-render, which is a fragile,
+    /// implicit dependency across two files. Making it `@Published` makes the
+    /// dependency explicit and correct regardless of what else changes in the view.
+    @Published private(set) var velocityLongitude: Double = 0
+    @Published private(set) var velocityLatitude: Double = 0
+    @Published private(set) var isCoasting: Bool = false
 
     private var lastDragTimestamp: Date?
 
