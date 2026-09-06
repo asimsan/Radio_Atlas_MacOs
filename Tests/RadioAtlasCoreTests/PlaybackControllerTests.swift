@@ -78,4 +78,42 @@ final class PlaybackControllerTests: XCTestCase {
         XCTAssertFalse(controller.isMuted)
         XCTAssertEqual(controller.volume, 0.8)
     }
+
+    func testSettingVolumeDirectlyWhileMutedClearsMuteAndKeepsNewValue() {
+        let player = FakeStreamPlayer()
+        let controller = PlaybackController(player: player)
+        controller.volume = 0.8
+        controller.toggleMute()
+        XCTAssertTrue(controller.isMuted)
+        XCTAssertEqual(controller.volume, 0)
+
+        // Simulates dragging the player bar's volume slider directly while
+        // muted, bypassing toggleMute().
+        controller.volume = 0.3
+
+        XCTAssertFalse(controller.isMuted)
+        XCTAssertEqual(controller.volume, 0.3)
+
+        // Toggling mute again must not resurrect the stale pre-mute volume
+        // (0.8) — it should mute from the slider's current value (0.3).
+        controller.toggleMute()
+        XCTAssertTrue(controller.isMuted)
+        XCTAssertEqual(controller.volume, 0)
+
+        controller.toggleMute()
+        XCTAssertFalse(controller.isMuted)
+        XCTAssertEqual(controller.volume, 0.3)
+    }
+
+    func testMutingFromUnmutedStillEndsMutedAtZeroVolume() {
+        let player = FakeStreamPlayer()
+        let controller = PlaybackController(player: player)
+        controller.volume = 0.6
+        XCTAssertFalse(controller.isMuted)
+
+        controller.toggleMute()
+
+        XCTAssertTrue(controller.isMuted)
+        XCTAssertEqual(controller.volume, 0)
+    }
 }

@@ -5,7 +5,19 @@ public final class PlaybackController: ObservableObject {
     @Published public private(set) var queue: [Station] = []
     @Published public private(set) var currentIndex: Int?
     @Published public var volume: Float = 1.0 {
-        didSet { player.setVolume(volume) }
+        didSet {
+            player.setVolume(volume)
+            // Any nonzero volume assignment (e.g. dragging the player bar's
+            // slider directly) implies the user wants sound audible, so clear
+            // a stale `isMuted`. `toggleMute()`'s own muting branch sets
+            // `volume = 0`, which is not nonzero, so this doesn't interfere
+            // with that path. Its unmuting branch sets `isMuted = false`
+            // before restoring `volume`, so this is a harmless re-assignment
+            // to the same value there.
+            if volume != 0 {
+                isMuted = false
+            }
+        }
     }
     @Published public private(set) var isMuted: Bool = false
     private var volumeBeforeMute: Float = 1.0
