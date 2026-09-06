@@ -44,6 +44,44 @@ struct GlobePaneView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
         }
+        .overlay(alignment: .topTrailing) {
+            // The playing station's city and its local date/time, ticking
+            // once a second — the user's own time while nothing is playing.
+            TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                let time = Self.formattedDate(timeline.date, timeZone: displayTimeZone)
+                if playingStation != nil,
+                   let city = CountryTimeZones.cityName(forIdentifier: displayTimeZone.identifier) {
+                    Text("\(city) · \(time)")
+                        .font(Palette.monoCaption)
+                        .foregroundStyle(Palette.dim)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+                } else {
+                    Text(time)
+                        .font(Palette.monoCaption)
+                        .foregroundStyle(Palette.dim)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+                }
+            }
+        }
+    }
+
+    /// The timezone the clock displays: the playing station's country zone
+    /// (the station's longitude disambiguates wide countries like the US),
+    /// falling back to the user's own timezone.
+    private var displayTimeZone: TimeZone {
+        if let station = playingStation {
+            return CountryTimeZones.timeZone(countryCode: station.countryCode, longitude: station.longitude) ?? .current
+        }
+        return .current
+    }
+
+    private static func formattedDate(_ date: Date, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy · HH:mm:ss"
+        formatter.timeZone = timeZone
+        return formatter.string(from: date)
     }
 
     // A fetch/local error takes precedence over the active-country hint,

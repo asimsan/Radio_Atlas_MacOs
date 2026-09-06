@@ -34,6 +34,9 @@ struct GlobeCanvasView: View {
     // so a refresh changes the bands smoothly instead of jumping.
     @State private var smoothedNorthConfig = AuroraBandConfig.fallback
     @State private var smoothedSouthConfig = AuroraBandConfig.fallback
+    // Sunburst rotation phase (radians) — advanced every tick; also drives
+    // the twinkle and flare envelopes via `SparkleMath`.
+    @State private var sparklePhase: Double = 0
 
     private enum Palette {
         static let paneBackground = Color(hex: 0x090A0C)
@@ -61,6 +64,23 @@ struct GlobeCanvasView: View {
         static let settleTime = 30.0
     }
 
+    /// Country-border sparkle constants. The twinkle/flare math itself lives
+    /// in `SparkleMath` (Core, tested).
+    private enum Sparkle {
+        /// Radians per second of the animation phase's advance — sets the
+        /// cadence the flare, glow pulse, and glints all derive from.
+        static let rotationSpeed = 0.25
+        /// Flare pulses this many times faster than the base phase — a
+        /// bright border flash lands roughly every 8 s.
+        static let flareSpeedMultiplier = 3.0
+        /// Glints pop at this multiple of the base phase.
+        static let glintSpeedMultiplier = 1.4
+        static let glowBlurRadius = 4.0
+        /// Glints below this visibility are skipped entirely (mostly-off
+        /// sparkle: sharp pops, not a constant shimmer).
+        static let glintVisibilityThreshold = 0.05
+    }
+
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
@@ -83,6 +103,7 @@ struct GlobeCanvasView: View {
                     interaction.tickAutoRotation()
                     auroraPhase = (auroraPhase + dt * Aurora.driftSpeed)
                         .truncatingRemainder(dividingBy: 2 * .pi)
+                    sparklePhase += dt * Sparkle.rotationSpeed
 
                     // Ease the per-pole band geometry toward the live-data
                     // target over `settleTime` seconds.
@@ -185,6 +206,15 @@ struct GlobeCanvasView: View {
         // and station dots, so signals stay readable through the glow.
         drawAurora(context: &context, center: center, viewRadius: viewRadius, phase: auroraPhase)
 
+        // The playing country's glowing, sparkling border — above the
+        // aurora, below the crisp sphere outline and station dots.
+        if let playingCountryCode {
+            drawCountrySparkle(
+                context: &context, center: center, viewRadius: viewRadius,
+                phase: sparklePhase, countryCode: playingCountryCode
+            )
+        }
+
         context.stroke(Path(ellipseIn: CGRect(x: center.x - sphereRadius, y: center.y - sphereRadius, width: sphereRadius * 2, height: sphereRadius * 2)), with: .color(Palette.outline), lineWidth: 1)
 
         drawStations(context: &context, center: center, viewRadius: viewRadius)
@@ -238,36 +268,44 @@ struct GlobeCanvasView: View {
     private func drawRegions(_ regions: [CountryRegion], context: inout GraphicsContext, center: CGPoint, viewRadius: Double, color: Color, opacity: Double) -> Path {
         var path = Path()
         for region in regions {
-            for ring in region.rings {
-                guard ring.count >= 3 else { continue }
-                let projected = ring.map { geoPoint in
-                    GlobeProjection.project(
-                        geoPoint, centerLatitude: interaction.centerLatitude, centerLongitude: interaction.centerLongitude,
-                        scale: interaction.scale, viewRadius: viewRadius
-                    )
-                }
-                let frontFacingCount = projected.filter(\.isFrontFacing).count
-                guard Double(frontFacingCount) / Double(projected.count) >= 0.5 else { continue }
-
-                // A ring straddling the horizon is approximated by connecting only
-                // its front-facing points with straight lines (see plan Step 8.3) —
-                // exact horizon clipping isn't required to read correctly at a glance.
-                var ringPath = Path()
-                var started = false
-                for entry in projected where entry.isFrontFacing {
-                    let screenPoint = CGPoint(x: center.x + entry.point.x, y: center.y + entry.point.y)
-                    if started {
-                        ringPath.addLine(to: screenPoint)
-                    } else {
-                        ringPath.move(to: screenPoint)
-                        started = true
-                    }
-                }
-                ringPath.closeSubpath()
-                path.addPath(ringPath)
-            }
+            path.addPath(regionPath(region, center: center, viewRadius: viewRadius))
         }
         context.fill(path, with: .color(color.opacity(opacity)))
+        return path
+    }
+
+    /// A single region's screen path, each ring projected with the same
+    /// horizon approximation the fills use.
+    private func regionPath(_ region: CountryRegion, center: CGPoint, viewRadius: Double) -> Path {
+        var path = Path()
+        for ring in region.rings {
+            guard ring.count >= 3 else { continue }
+            let projected = ring.map { geoPoint in
+                GlobeProjection.project(
+                    geoPoint, centerLatitude: interaction.centerLatitude, centerLongitude: interaction.centerLongitude,
+                    scale: interaction.scale, viewRadius: viewRadius
+                )
+            }
+            let frontFacingCount = projected.filter(\.isFrontFacing).count
+            guard Double(frontFacingCount) / Double(projected.count) >= 0.5 else { continue }
+
+            // A ring straddling the horizon is approximated by connecting only
+            // its front-facing points with straight lines (see plan Step 8.3) —
+            // exact horizon clipping isn't required to read correctly at a glance.
+            var ringPath = Path()
+            var started = false
+            for entry in projected where entry.isFrontFacing {
+                let screenPoint = CGPoint(x: center.x + entry.point.x, y: center.y + entry.point.y)
+                if started {
+                    ringPath.addLine(to: screenPoint)
+                } else {
+                    ringPath.move(to: screenPoint)
+                    started = true
+                }
+            }
+            ringPath.closeSubpath()
+            path.addPath(ringPath)
+        }
         return path
     }
 
@@ -339,6 +377,71 @@ struct GlobeCanvasView: View {
             layer.fill(path, with: .color(color.opacity(0.32 * config.opacityMultiplier)))
         }
         context.fill(path, with: .color(color.opacity(0.16 * config.opacityMultiplier)))
+    }
+
+    // MARK: - Country sparkle
+
+    /// The playing country's boundaries glow and sparkle: a soft blurred
+    /// stroke that breathes with the flare pulse, plus small gold glints
+    /// popping in and out along the outline, each on its own hash-derived
+    /// rhythm — mostly off, sharp pops, so the border shimmers rather than
+    /// staying lit.
+    private func drawCountrySparkle(
+        context: inout GraphicsContext,
+        center: CGPoint,
+        viewRadius: Double,
+        phase: Double,
+        countryCode: String
+    ) {
+        guard let region = regions.first(where: { $0.isoCode == countryCode }) else { return }
+        let path = regionPath(region, center: center, viewRadius: viewRadius)
+        guard !path.isEmpty else { return }
+
+        let flare = SparkleMath.flareEnvelope(phase: phase * Sparkle.flareSpeedMultiplier)
+
+        // Border glow: a wide blurred stroke underneath the crisp stroke the
+        // highlight already draws, brightening with each flash.
+        context.drawLayer { layer in
+            layer.addFilter(.blur(radius: Sparkle.glowBlurRadius))
+            layer.stroke(
+                path,
+                with: .color(Palette.playingCountryHighlight.opacity(0.30 + 0.40 * flare)),
+                lineWidth: 3
+            )
+        }
+
+        // Glints: tiny crosses at ring points whose hash-scheduled pop is
+        // currently visible.
+        var pointIndex = 0
+        for ring in region.rings {
+            for geoPoint in ring {
+                defer { pointIndex += 1 }
+                let projected = GlobeProjection.project(
+                    geoPoint,
+                    centerLatitude: interaction.centerLatitude, centerLongitude: interaction.centerLongitude,
+                    scale: interaction.scale, viewRadius: viewRadius
+                )
+                guard projected.isFrontFacing else { continue }
+
+                let glint = SparkleMath.flareEnvelope(
+                    phase: phase * Sparkle.glintSpeedMultiplier + SparkleMath.hash(pointIndex) * 2 * .pi
+                )
+                guard glint > Sparkle.glintVisibilityThreshold else { continue }
+
+                let point = CGPoint(x: center.x + projected.point.x, y: center.y + projected.point.y)
+                let size = 1.2 + 2.2 * glint
+                var cross = Path()
+                cross.move(to: CGPoint(x: point.x - size, y: point.y))
+                cross.addLine(to: CGPoint(x: point.x + size, y: point.y))
+                cross.move(to: CGPoint(x: point.x, y: point.y - size))
+                cross.addLine(to: CGPoint(x: point.x, y: point.y + size))
+                context.stroke(
+                    cross,
+                    with: .color(Palette.playingCountryHighlight.opacity(min(1, 0.35 + 0.65 * glint))),
+                    lineWidth: 1
+                )
+            }
+        }
     }
 
     /// Builds the filled polygon between the two wavy rings: outer edge
