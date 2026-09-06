@@ -7,6 +7,7 @@ struct GlobePaneView: View {
     let regions: [CountryRegion]
     let activeCountryCode: String?
     let activeCountryName: String?
+    let statusMessage: String?
     let onStationTapped: (Station) -> Void
     let onCountryTapped: (String) -> Void
 
@@ -25,10 +26,9 @@ struct GlobePaneView: View {
                 .padding(16)
             }
             HStack {
-                Text(activeCountryName.map { "\($0)  ·  click another country to browse" }
-                    ?? "Drag or flick to spin  ·  wheel to zoom  ·  click a signal or country")
+                Text(hintText)
                     .font(Palette.monoCaption)
-                    .foregroundStyle(Palette.dim)
+                    .foregroundStyle(hintColor)
                     .lineLimit(1)
                 Spacer()
                 Text("\(stations.count) signals")
@@ -38,5 +38,18 @@ struct GlobePaneView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
         }
+    }
+
+    // A fetch/local error takes precedence over the active-country hint,
+    // which takes precedence over the default hint — matching the original's
+    // documented `fetchError` priority (see design spec's globe pane hint text).
+    private var hintText: String {
+        if let statusMessage { return statusMessage }
+        if let activeCountryName { return "\(activeCountryName)  ·  click another country to browse" }
+        return "Drag or flick to spin  ·  wheel to zoom  ·  click a signal or country"
+    }
+
+    private var hintColor: Color {
+        statusMessage != nil ? Palette.urgent : Palette.dim
     }
 }

@@ -43,6 +43,10 @@ final class AVPlayerStreamPlayer: StreamPlaying {
 
     func play(station: Station) {
         currentStation = station
+        // Emitted synchronously, before the AVPlayerItem/KVO setup below, so
+        // the UI shows "Loading…" immediately rather than stale info from
+        // whatever was playing before while the new stream buffers.
+        onStatusChange?(.loading(station))
 
         let item = AVPlayerItem(url: station.streamURL)
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
