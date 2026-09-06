@@ -1,14 +1,36 @@
+import RadioAtlasCore
 import SwiftUI
 
 struct PanelView: View {
+    @StateObject private var viewModel = PanelViewModel()
+    @State private var helpVisible = false
+
     var body: some View {
-        VStack {
-            Text("Radio Atlas")
-                .font(.title2)
-            Text("Globe and controls land here in later tasks.")
-                .foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            HeaderView(
+                searchQuery: $viewModel.searchQuery,
+                helpVisible: helpVisible,
+                onRandom: {},
+                onToggleHelp: { helpVisible.toggle() },
+                onClose: { NSApp.keyWindow?.close() }
+            )
+            HStack(spacing: 0) {
+                GlobePaneView(
+                    stations: viewModel.filteredStations,
+                    countryLookup: viewModel.countryLookup,
+                    regions: viewModel.countryRegions,
+                    activeCountryCode: nil,
+                    activeCountryName: nil,
+                    onStationTapped: { viewModel.play($0) },
+                    onCountryTapped: { _ in }
+                )
+                Rectangle().fill(Palette.divider).frame(width: 1)
+                SidebarView(viewModel: viewModel)
+                    .frame(width: 390)
+            }
         }
-        .frame(width: 480, height: 640)
-        .padding()
+        .frame(minWidth: 800, idealWidth: 1180, minHeight: 560, idealHeight: 760)
+        .background(Palette.background)
+        .task { await viewModel.loadStations() }
     }
 }

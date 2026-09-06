@@ -68,6 +68,21 @@ public extension CountryLookup {
     }
 }
 
+public extension CountryLookup {
+    enum LoadError: Error { case resourceNotFound }
+
+    /// Loads the bundled `countries-110m.geojson` resource (packaged into
+    /// `RadioAtlasCore`'s resource bundle via `Package.swift`'s `.copy(...)`),
+    /// so app-target callers don't need to know the resource's bundle or
+    /// filename.
+    static func loadBundled() throws -> CountryLookup {
+        guard let url = Bundle.module.url(forResource: "countries-110m", withExtension: "geojson") else {
+            throw LoadError.resourceNotFound
+        }
+        return try CountryLookup(geoJSONData: try Data(contentsOf: url))
+    }
+}
+
 // MARK: - Minimal GeoJSON decoding
 
 private struct GeoJSONFeatureCollection: Decodable {
