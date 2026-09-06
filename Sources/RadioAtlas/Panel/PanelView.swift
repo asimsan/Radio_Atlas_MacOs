@@ -26,6 +26,9 @@ struct PanelView: View {
                         regions: viewModel.countryRegions,
                         activeCountryCode: viewModel.activeCountryCode,
                         activeCountryName: viewModel.activeCountryName,
+                        playingCountryCode: viewModel.playingCountryCode,
+                        playingStation: viewModel.playingStation,
+                        auroraActivity: viewModel.auroraActivity,
                         statusMessage: viewModel.statusMessage,
                         onStationTapped: { viewModel.play($0) },
                         onCountryTapped: { viewModel.browseCountry($0) }

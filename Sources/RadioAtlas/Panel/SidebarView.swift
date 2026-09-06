@@ -19,6 +19,27 @@ struct SidebarView: View {
             .frame(height: 48)
             Rectangle().fill(Palette.divider).frame(height: 1)
 
+            // Country-mode header (globe click or country search): the browsed
+            // country, its station count, and a one-click way back out.
+            if let countryName = viewModel.activeCountryName, viewModel.selectedTab == .world {
+                HStack {
+                    Text("\(countryName.uppercased()) · \(viewModel.displayedStations.count) stations")
+                        .font(Palette.monoCaption)
+                        .foregroundStyle(Palette.accent)
+                        .lineLimit(1)
+                    Spacer()
+                    Button(action: { viewModel.exitCountryMode() }) {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Palette.dim)
+                    .help("Exit country browse")
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 32)
+                Rectangle().fill(Palette.divider).frame(height: 1)
+            }
+
             if viewModel.displayedStations.isEmpty {
                 Spacer()
                 Text(emptyStateText)

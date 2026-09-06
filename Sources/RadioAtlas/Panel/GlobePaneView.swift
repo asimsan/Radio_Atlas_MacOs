@@ -7,6 +7,9 @@ struct GlobePaneView: View {
     let regions: [CountryRegion]
     let activeCountryCode: String?
     let activeCountryName: String?
+    let playingCountryCode: String?
+    let playingStation: Station?
+    let auroraActivity: AuroraActivity?
     let statusMessage: String?
     let onStationTapped: (Station) -> Void
     let onCountryTapped: (String) -> Void
@@ -20,6 +23,9 @@ struct GlobePaneView: View {
                     countryLookup: countryLookup,
                     regions: regions,
                     activeCountryCode: activeCountryCode,
+                    playingCountryCode: playingCountryCode,
+                    playingStation: playingStation,
+                    auroraActivity: auroraActivity,
                     onStationTapped: onStationTapped,
                     onCountryTapped: onCountryTapped
                 )

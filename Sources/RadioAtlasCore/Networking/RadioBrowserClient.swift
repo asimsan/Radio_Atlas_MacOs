@@ -29,8 +29,12 @@ public final class RadioBrowserClient {
     }
 
     public func stationsByCountryCode(_ code: String) async throws -> [Station] {
-        let url = baseURL.appendingPathComponent("/json/stations/bycountrycodeexact/\(code)")
-        return try await fetchStations(url: url)
+        var components = URLComponents(url: baseURL.appendingPathComponent("/json/stations/bycountrycodeexact/\(code)"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "order", value: "clickcount"),
+            URLQueryItem(name: "reverse", value: "true")
+        ]
+        return try await fetchStations(url: components.url!)
     }
 
     public func registerClick(stationID: String) async {

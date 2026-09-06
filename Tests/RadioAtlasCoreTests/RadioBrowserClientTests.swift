@@ -35,5 +35,9 @@ final class RadioBrowserClientTests: XCTestCase {
 
         let requestedURL = try XCTUnwrap(StubURLProtocol.lastRequest?.url)
         XCTAssertEqual(requestedURL.path, "/json/stations/bycountrycodeexact/US")
+        // Country lists should be ordered by popularity so the sidebar shows
+        // the same clickcount ordering the world list uses.
+        XCTAssertTrue(requestedURL.query?.contains("order=clickcount") ?? false)
+        XCTAssertTrue(requestedURL.query?.contains("reverse=true") ?? false)
     }
 }

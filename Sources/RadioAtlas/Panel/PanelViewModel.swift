@@ -13,28 +13,39 @@ final class PanelViewModel: ObservableObject {
     @Published var stations: [Station] = []
     @Published var searchQuery: String = "" {
         didSet {
-            // Typing a search query means "search the whole world list," so
-            // it supersedes/exits an active country-browse (which otherwise
-            // has no other way to return to the full list).
-            if !searchQuery.isEmpty {
-                activeCountryCode = nil
-                activeCountryName = nil
-            }
-            filteredStations = StationFilter.filter(stations, query: searchQuery)
+            // The search pipeline lives in `StationSearchCoordinator` (Core):
+            // non-country queries filter the top-stations list locally and
+            // instantly, a query that names a country fetches that country's
+            // full station list (debounced, stale responses discarded).
+            coordinator.setQuery(searchQuery)
         }
     }
-    @Published var filteredStations: [Station] = []
     @Published var selectedTab: SidebarTab = .world
     @Published var outputDevices: [OutputDevice] = []
     @Published var selectedOutputDeviceID: String?
     @Published var keyboardSelectedIndex: Int?
-    @Published var activeCountryCode: String?
-    @Published var activeCountryName: String?
     @Published var statusMessage: String?
+
+    /// The World tab's list (and the globe's station-dot source): the
+    /// locally filtered top stations, or the active country's full list.
+    var filteredStations: [Station] { coordinator.list }
+    var activeCountryCode: String? { coordinator.countryCode }
+    var activeCountryName: String? { coordinator.countryName }
+
+    /// Country of the currently playing station — drives the globe's
+    /// distinct playing-country highlight and the auto-rotation that brings
+    /// it into view.
+    var playingCountryCode: String? { playbackController.currentStation?.countryCode }
+    var playingStation: Station? { playbackController.currentStation }
+
+    /// Live aurora activity feeding the globe's data-driven bands; nil while
+    /// the feed is unavailable (bands fall back to the static look).
+    var auroraActivity: AuroraActivity? { auroraMonitor.activity }
 
     let playbackController: PlaybackController
     private(set) var countryLookup: CountryLookup?
     private(set) var countryRegions: [CountryRegion] = []
+    let coordinator: StationSearchCoordinator
 
     private let client = RadioBrowserClient()
     private let cache: StationCache
@@ -43,6 +54,13 @@ final class PanelViewModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private let randomTuner = RandomTuner()
     private let outputDeviceProvider: OutputDeviceProviding = CoreAudioOutputDeviceProvider()
+    private let auroraMonitor = AuroraMonitor()
+    /// Top-stations load/refresh errors, kept separate from country-fetch
+    /// errors so `updateStatusMessage()` can compose them with a stable
+    /// priority.
+    private var loadError: String? {
+        didSet { updateStatusMessage() }
+    }
     // Holds the media-key/Now Playing integration alive for the app's
     // lifetime. Never read after assignment — its `init` wires
     // `MPRemoteCommandCenter` targets and subscribes to `playbackController`
@@ -59,6 +77,28 @@ final class PanelViewModel: ObservableObject {
         userState = stateStore.load()
         playbackController = PlaybackController(player: AVPlayerStreamPlayer())
         playbackController.volume = userState.volume
+
+        if let lookup = try? CountryLookup.loadBundled() {
+            countryLookup = lookup
+            countryRegions = lookup.allRegions()
+        }
+
+        coordinator = StationSearchCoordinator(
+            directory: client,
+            regionCodes: Set(countryRegions.map(\.isoCode))
+        )
+        // Same nested-ObservableObject forwarding as `playbackController`
+        // below — views observe `viewModel`, not the coordinator.
+        coordinator.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        coordinator.$countryError
+            .combineLatest(coordinator.$isLoadingCountry)
+            .sink { [weak self] _, _ in self?.updateStatusMessage() }
+            .store(in: &cancellables)
+        auroraMonitor.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         // ObservableObject does NOT automatically propagate a nested object's
         // changes to views observing the parent. SidebarView and PlayerBarView
@@ -85,12 +125,8 @@ final class PanelViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        if let lookup = try? CountryLookup.loadBundled() {
-            countryLookup = lookup
-            countryRegions = lookup.allRegions()
-        }
-
         nowPlaying = NowPlayingCenter(controller: playbackController)
+        auroraMonitor.start()
 
         // Populate the output-device list/selection, then restore whatever
         // was persisted (refreshOutputDevices() already falls back to system
@@ -105,38 +141,29 @@ final class PanelViewModel: ObservableObject {
     func loadStations() async {
         if let cached = cache.read() {
             stations = cached
-            filteredStations = StationFilter.filter(cached, query: searchQuery)
+            coordinator.setBaseStations(cached)
         }
         do {
             let fresh = try await client.topStations()
             stations = fresh
-            filteredStations = StationFilter.filter(fresh, query: searchQuery)
+            coordinator.setBaseStations(fresh)
             try? cache.write(fresh)
-            statusMessage = nil
+            loadError = nil
         } catch {
-            statusMessage = stations.isEmpty
+            loadError = stations.isEmpty
                 ? "Couldn't load stations: \(error.localizedDescription)"
                 : "Couldn't refresh stations: \(error.localizedDescription)"
         }
     }
 
     /// Fetches and displays the stations for a country the user clicked on
-    /// the globe. Populates `filteredStations` (the World tab's source list,
-    /// and the globe's own station-dot source) with the result and switches
-    /// to the World tab so the browsed list is immediately visible.
+    /// the globe (the search bar reaches the same state via the coordinator's
+    /// country-name matching). Switches to the World tab so the browsed list
+    /// is immediately visible.
     func browseCountry(_ code: String) {
-        activeCountryCode = code
-        activeCountryName = stations.first(where: { $0.countryCode == code })?.country ?? code
+        let name = stations.first(where: { $0.countryCode == code })?.country ?? code
+        coordinator.browseCountry(code: code, name: name)
         selectedTab = .world
-        Task {
-            do {
-                let result = try await client.stationsByCountryCode(code)
-                filteredStations = StationFilter.filter(result, query: searchQuery)
-                statusMessage = nil
-            } catch {
-                statusMessage = "Couldn't load stations for \(self.activeCountryName ?? code): \(error.localizedDescription)"
-            }
-        }
     }
 
     func play(_ station: Station) {
@@ -240,5 +267,26 @@ final class PanelViewModel: ObservableObject {
 
     func retryFailedStation() {
         playbackController.togglePlayPause()
+    }
+
+    /// Exits country mode entirely (the sidebar header's ✕ button): clears
+    /// the search field and returns the World tab to the top-stations list.
+    func exitCountryMode() {
+        searchQuery = ""
+        coordinator.exitCountryMode()
+    }
+
+    /// Composes the globe pane's hint with a stable priority: station-load
+    /// errors, then country-fetch errors, then the country loading hint.
+    private func updateStatusMessage() {
+        if let loadError {
+            statusMessage = loadError
+        } else if let countryError = coordinator.countryError {
+            statusMessage = countryError
+        } else if coordinator.isLoadingCountry, let name = coordinator.countryName {
+            statusMessage = "Loading \(name)…"
+        } else {
+            statusMessage = nil
+        }
     }
 }

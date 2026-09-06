@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import RadioAtlasCore
 
 /// Owns the globe's rotation/zoom state and the drag/kinetic-coast physics,
 /// separated from `GlobeCanvasView`'s drawing code so the interaction logic
@@ -26,6 +27,9 @@ final class GlobeInteractionState: ObservableObject {
     /// and a coasting decay that drops below this stops immediately.
     static let kineticLaunchSpeed: Double = 120
 
+    /// Seconds for the eased glide to a playing station's country.
+    static let autoRotationDuration: TimeInterval = 0.8
+
     /// Current kinetic-coast angular velocity (degrees/sec), decomposed so that
     /// `centerLongitude += velocityLongitude * dt` / `centerLatitude += velocityLatitude * dt`
     /// reproduces the same direction of travel the drag was moving in.
@@ -41,12 +45,27 @@ final class GlobeInteractionState: ObservableObject {
     @Published private(set) var velocityLongitude: Double = 0
     @Published private(set) var velocityLatitude: Double = 0
     @Published private(set) var isCoasting: Bool = false
+    /// True while the eased auto-rotation glide to a target center is running
+    /// (`animateCenter(toLatitude:longitude:)`), so the driving `TimelineView`
+    /// keeps ticking during it.
+    @Published private(set) var isAutoRotating = false
 
     private var lastDragTimestamp: Date?
+
+    // Auto-rotation glide state (start/delta so each tick recomputes from the
+    // fixed start — no accumulated floating-point drift).
+    private var rotationStartLatitude = 0.0
+    private var rotationStartLongitude = 0.0
+    private var rotationDeltaLatitude = 0.0
+    private var rotationDeltaLongitude = 0.0
+    private var rotationStartDate: Date?
 
     /// Call with the incremental (not cumulative) drag translation since the last call.
     func applyDrag(deltaX: Double, deltaY: Double) {
         isCoasting = false
+        // User input wins over an in-flight auto-rotation.
+        isAutoRotating = false
+        rotationStartDate = nil
         let now = Date()
         let deltaLongitude = -deltaX * Self.longitudeSensitivity
         let deltaLatitude = deltaY * Self.latitudeSensitivity
@@ -106,5 +125,43 @@ final class GlobeInteractionState: ObservableObject {
 
     func applyZoom(delta: Double) {
         scale = max(Self.minimumScale, min(Self.maximumScale, scale + delta))
+    }
+
+    /// Starts an eased glide to the target center, cancelling any kinetic
+    /// coast. Longitude takes the shortest arc across the dateline and
+    /// latitude is clamped to the existing ±89° limits. No-ops when the globe
+    /// already faces the target (within 0.01°).
+    func animateCenter(toLatitude latitude: Double, longitude: Double) {
+        let targetLatitude = max(-89, min(89, latitude))
+        let deltaLatitude = targetLatitude - centerLatitude
+        let deltaLongitude = GlobeAnimation.longitudeDelta(from: centerLongitude, to: longitude)
+        guard abs(deltaLatitude) > 0.01 || abs(deltaLongitude) > 0.01 else { return }
+
+        isCoasting = false
+        velocityLongitude = 0
+        velocityLatitude = 0
+        rotationStartLatitude = centerLatitude
+        rotationStartLongitude = centerLongitude
+        rotationDeltaLatitude = deltaLatitude
+        rotationDeltaLongitude = deltaLongitude
+        rotationStartDate = Date()
+        isAutoRotating = true
+    }
+
+    /// Advances an in-flight auto-rotation by wall-clock time; intended to be
+    /// driven by the same `TimelineView` tick as `tickCoast(dt:)`.
+    func tickAutoRotation() {
+        guard isAutoRotating, let start = rotationStartDate else { return }
+        let progress = Date().timeIntervalSince(start) / Self.autoRotationDuration
+        guard progress < 1 else {
+            centerLatitude = max(-89, min(89, rotationStartLatitude + rotationDeltaLatitude))
+            centerLongitude = rotationStartLongitude + rotationDeltaLongitude
+            isAutoRotating = false
+            rotationStartDate = nil
+            return
+        }
+        let eased = GlobeAnimation.easeInOut(progress)
+        centerLatitude = max(-89, min(89, rotationStartLatitude + rotationDeltaLatitude * eased))
+        centerLongitude = rotationStartLongitude + rotationDeltaLongitude * eased
     }
 }

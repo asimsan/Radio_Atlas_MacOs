@@ -11,11 +11,29 @@ struct GlobeCanvasView: View {
     let countryLookup: CountryLookup
     let regions: [CountryRegion]
     let activeCountryCode: String?
+    /// Country of the currently playing station — drawn as its own, stronger
+    /// highlight distinct from the browse highlight above.
+    let playingCountryCode: String?
+    /// The playing station itself, used only as a fallback rotation target
+    /// when its country has no region geometry to center on.
+    let playingStation: Station?
+    /// Live aurora activity (nil while the feed is unavailable — bands fall
+    /// back to the static look).
+    let auroraActivity: AuroraActivity?
     let onStationTapped: (Station) -> Void
     let onCountryTapped: (String) -> Void
 
     @StateObject private var interaction = GlobeInteractionState()
     @State private var lastDragTranslation: CGSize = .zero
+    // Aurora animation state: `phase` advances while the view is on screen
+    // and drives the bands' drift; `lastTimelineDate` turns timeline ticks
+    // into real elapsed seconds.
+    @State private var auroraPhase: Double = 0
+    @State private var lastTimelineDate: Date?
+    // Per-pole band geometry, eased toward the live-data target every tick
+    // so a refresh changes the bands smoothly instead of jumping.
+    @State private var smoothedNorthConfig = AuroraBandConfig.fallback
+    @State private var smoothedSouthConfig = AuroraBandConfig.fallback
 
     private enum Palette {
         static let paneBackground = Color(hex: 0x090A0C)
@@ -25,20 +43,72 @@ struct GlobeCanvasView: View {
         static let outline = Color(hex: 0x9099A3)
         static let stationDot = Color(hex: 0xD9DEE3)
         static let countryHighlight = Color(hex: 0x7C7CA8)
+        // Same gold as the app's favorite-star color language: "active".
+        static let playingCountryHighlight = Color(hex: 0xF2C94C)
+        static let auroraInner = Color(hex: 0x63E6A0) // green
+        static let auroraOuter = Color(hex: 0x53D8C8) // teal
+    }
+
+    /// Aurora animation constants. Band geometry (edges/amplitude/opacity)
+    /// comes from `AuroraBandConfig`, derived from live data.
+    private enum Aurora {
+        static let waveCount = 3.0
+        static let samples = 72
+        /// Radians per second of phase drift — a slow, gentle curtain sway.
+        static let driftSpeed = 0.15
+        static let blurRadius = 6.0
+        /// Seconds over which the bands ease toward freshly fetched data.
+        static let settleTime = 30.0
     }
 
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
-            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !interaction.isCoasting)) { timeline in
+            // The aurora shimmer means the timeline never pauses: idle
+            // redraws run at a reduced 15 fps (full 60 fps only while the
+            // user drags/rotates), keeping the always-on animation light.
+            TimelineView(.animation(
+                minimumInterval: interaction.isCoasting || interaction.isAutoRotating ? 1.0 / 60.0 : 1.0 / 15.0,
+                paused: false
+            )) { timeline in
                 Canvas { context, canvasSize in
-                    draw(context: &context, size: canvasSize)
+                    draw(context: &context, size: canvasSize, auroraPhase: auroraPhase)
                 }
-                .onChange(of: timeline.date) { _ in
+                .onChange(of: timeline.date) { date in
                     // The two-parameter onChange(of:initial:_:) overload requires macOS 14;
                     // this package targets macOS 13, so the single-parameter form is used.
-                    interaction.tickCoast(dt: 1.0 / 60.0)
+                    let dt = lastTimelineDate.map { date.timeIntervalSince($0) } ?? 0
+                    lastTimelineDate = date
+                    interaction.tickCoast(dt: dt)
+                    interaction.tickAutoRotation()
+                    auroraPhase = (auroraPhase + dt * Aurora.driftSpeed)
+                        .truncatingRemainder(dividingBy: 2 * .pi)
+
+                    // Ease the per-pole band geometry toward the live-data
+                    // target over `settleTime` seconds.
+                    let blend = min(1, dt / Aurora.settleTime)
+                    smoothedNorthConfig = smoothedNorthConfig.mixed(
+                        with: AuroraBandConfig.resolve(activity: auroraActivity?.north),
+                        factor: blend
+                    )
+                    smoothedSouthConfig = smoothedSouthConfig.mixed(
+                        with: AuroraBandConfig.resolve(activity: auroraActivity?.south),
+                        factor: blend
+                    )
                 }
+            }
+            .onChange(of: playingCountryCode) { newCode in
+                guard let newCode else { return }
+                var target: GeoPoint?
+                if let region = regions.first(where: { $0.isoCode == newCode }) {
+                    target = RegionCentroid.centroid(of: region)
+                }
+                if target == nil, let station = playingStation,
+                   let latitude = station.latitude, let longitude = station.longitude {
+                    target = GeoPoint(latitude: latitude, longitude: longitude)
+                }
+                guard let target else { return }
+                interaction.animateCenter(toLatitude: target.latitude, longitude: target.longitude)
             }
             .background(Palette.paneBackground)
             .background(
@@ -87,7 +157,7 @@ struct GlobeCanvasView: View {
 
     // MARK: - Drawing
 
-    private func draw(context: inout GraphicsContext, size: CGSize) {
+    private func draw(context: inout GraphicsContext, size: CGSize, auroraPhase: Double) {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let viewRadius = min(size.width, size.height) * 0.44
         let sphereRadius = viewRadius * interaction.scale
@@ -101,6 +171,19 @@ struct GlobeCanvasView: View {
             let highlighted = regions.filter { $0.isoCode == activeCountryCode }
             drawRegions(highlighted, context: &context, center: center, viewRadius: viewRadius, color: Palette.countryHighlight, opacity: 0.3)
         }
+
+        // The playing country gets its own stronger highlight on top of the
+        // browse highlight, so "listening to Brazil while browsing France"
+        // shows both distinctly (and one strong fill when they coincide).
+        if let playingCountryCode {
+            let playing = regions.filter { $0.isoCode == playingCountryCode }
+            let path = drawRegions(playing, context: &context, center: center, viewRadius: viewRadius, color: Palette.playingCountryHighlight, opacity: 0.55)
+            context.stroke(path, with: .color(Palette.playingCountryHighlight), lineWidth: 1)
+        }
+
+        // Atmospheric layer: drawn above land but below the sphere outline
+        // and station dots, so signals stay readable through the glow.
+        drawAurora(context: &context, center: center, viewRadius: viewRadius, phase: auroraPhase)
 
         context.stroke(Path(ellipseIn: CGRect(x: center.x - sphereRadius, y: center.y - sphereRadius, width: sphereRadius * 2, height: sphereRadius * 2)), with: .color(Palette.outline), lineWidth: 1)
 
@@ -149,7 +232,10 @@ struct GlobeCanvasView: View {
         }
     }
 
-    private func drawRegions(_ regions: [CountryRegion], context: inout GraphicsContext, center: CGPoint, viewRadius: Double, color: Color, opacity: Double) {
+    /// Fills the regions and returns the drawn path so callers can add a
+    /// stroke on top (the playing-country highlight does).
+    @discardableResult
+    private func drawRegions(_ regions: [CountryRegion], context: inout GraphicsContext, center: CGPoint, viewRadius: Double, color: Color, opacity: Double) -> Path {
         var path = Path()
         for region in regions {
             for ring in region.rings {
@@ -182,6 +268,7 @@ struct GlobeCanvasView: View {
             }
         }
         context.fill(path, with: .color(color.opacity(opacity)))
+        return path
     }
 
     private func drawStations(context: inout GraphicsContext, center: CGPoint, viewRadius: Double) {
@@ -198,6 +285,100 @@ struct GlobeCanvasView: View {
             let dotRect = CGRect(x: screenPoint.x - dotRadius, y: screenPoint.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
             context.fill(Path(ellipseIn: dotRect), with: .color(Palette.stationDot))
         }
+    }
+
+    // MARK: - Aurora
+
+    /// Two drifting bands (green core, teal fringe) around each pole, sized
+    /// and brightened by that pole's live-data config; the far pole's bands
+    /// are culled by the front-facing check like land regions.
+    private func drawAurora(context: inout GraphicsContext, center: CGPoint, viewRadius: Double, phase: Double) {
+        drawAuroraBand(
+            pole: .north, config: smoothedNorthConfig, color: Palette.auroraInner,
+            phase: phase, context: &context, center: center, viewRadius: viewRadius
+        )
+        drawAuroraBand(
+            pole: .north, config: smoothedNorthConfig, color: Palette.auroraOuter,
+            // Offset phase so the two bands sway out of sync.
+            phase: phase + 1.2, context: &context, center: center, viewRadius: viewRadius
+        )
+        drawAuroraBand(
+            pole: .south, config: smoothedSouthConfig, color: Palette.auroraInner,
+            phase: phase, context: &context, center: center, viewRadius: viewRadius
+        )
+        drawAuroraBand(
+            pole: .south, config: smoothedSouthConfig, color: Palette.auroraOuter,
+            phase: phase + 1.2, context: &context, center: center, viewRadius: viewRadius
+        )
+    }
+
+    private func drawAuroraBand(
+        pole: AuroraPole,
+        config: AuroraBandConfig,
+        color: Color,
+        phase: Double,
+        context: inout GraphicsContext,
+        center: CGPoint,
+        viewRadius: Double
+    ) {
+        let inner = AuroraGeometry.wavyRing(
+            pole: pole, base: config.innerBand.inner, amplitude: config.amplitude,
+            waveCount: Aurora.waveCount, phase: phase, samples: Aurora.samples
+        )
+        let outer = AuroraGeometry.wavyRing(
+            pole: pole, base: config.outerBand.outer, amplitude: config.amplitude,
+            waveCount: Aurora.waveCount, phase: phase, samples: Aurora.samples
+        )
+        let path = bandPath(outerRing: outer, innerRing: inner, center: center, viewRadius: viewRadius)
+        guard !path.isEmpty else { return }
+
+        // Soft glow underneath a crisper fill — the glow layer's filters are
+        // scoped to `drawLayer` so the outline/dots drawn later stay sharp.
+        context.drawLayer { layer in
+            layer.addFilter(.blur(radius: Aurora.blurRadius))
+            layer.fill(path, with: .color(color.opacity(0.32 * config.opacityMultiplier)))
+        }
+        context.fill(path, with: .color(color.opacity(0.16 * config.opacityMultiplier)))
+    }
+
+    /// Builds the filled polygon between the two wavy rings: outer edge
+    /// front-facing points forward, inner edge reversed, then closed. Same
+    /// horizon approximation as country rings (see `drawRegions`).
+    private func bandPath(outerRing: [GeoPoint], innerRing: [GeoPoint], center: CGPoint, viewRadius: Double) -> Path {
+        func projected(_ ring: [GeoPoint]) -> [(point: CGPoint, isFrontFacing: Bool)] {
+            ring.map { geoPoint in
+                let entry = GlobeProjection.project(
+                    geoPoint,
+                    centerLatitude: interaction.centerLatitude, centerLongitude: interaction.centerLongitude,
+                    scale: interaction.scale, viewRadius: viewRadius
+                )
+                return (CGPoint(x: center.x + entry.point.x, y: center.y + entry.point.y), entry.isFrontFacing)
+            }
+        }
+
+        let outer = projected(outerRing)
+        let inner = projected(innerRing)
+
+        func frontRatio(_ ring: [(point: CGPoint, isFrontFacing: Bool)]) -> Double {
+            guard !ring.isEmpty else { return 0 }
+            return Double(ring.filter(\.isFrontFacing).count) / Double(ring.count)
+        }
+        guard frontRatio(outer) >= 0.5, frontRatio(inner) >= 0.5 else { return Path() }
+
+        var path = Path()
+        for entry in outer where entry.isFrontFacing {
+            if path.isEmpty {
+                path.move(to: entry.point)
+            } else {
+                path.addLine(to: entry.point)
+            }
+        }
+        // `outer` has ≥50% front-facing points, so the path has started.
+        for entry in inner.reversed() where entry.isFrontFacing {
+            path.addLine(to: entry.point)
+        }
+        path.closeSubpath()
+        return path
     }
 
     // MARK: - Hit testing
