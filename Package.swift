@@ -5,7 +5,10 @@ let package = Package(
     name: "RadioAtlas",
     platforms: [.macOS(.v13)],
     targets: [
-        .target(name: "RadioAtlasCore"),
+        .target(
+            name: "RadioAtlasCore",
+            resources: [.copy("Resources/countries-110m.geojson")]
+        ),
         .executableTarget(
             name: "RadioAtlas",
             dependencies: ["RadioAtlasCore"]
