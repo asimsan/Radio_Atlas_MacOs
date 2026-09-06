@@ -53,6 +53,21 @@ public struct CountryLookup {
     }
 }
 
+public struct CountryRegion {
+    public let isoCode: String
+    public let rings: [[GeoPoint]]
+}
+
+public extension CountryLookup {
+    /// Exposes the same parsed ring geometry `countryCode(at:)` uses internally,
+    /// for rendering rather than point-in-polygon lookups. Declared in this file
+    /// (rather than a new file) so it can read the private `regions`/`Region`
+    /// storage without widening their access level.
+    func allRegions() -> [CountryRegion] {
+        regions.map { CountryRegion(isoCode: $0.isoCode, rings: $0.rings) }
+    }
+}
+
 // MARK: - Minimal GeoJSON decoding
 
 private struct GeoJSONFeatureCollection: Decodable {
