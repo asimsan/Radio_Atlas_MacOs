@@ -7,6 +7,8 @@ public final class PlaybackController: ObservableObject {
     @Published public var volume: Float = 1.0 {
         didSet { player.setVolume(volume) }
     }
+    @Published public private(set) var isMuted: Bool = false
+    private var volumeBeforeMute: Float = 1.0
 
     private let player: StreamPlaying
 
@@ -48,6 +50,17 @@ public final class PlaybackController: ObservableObject {
 
     public func setOutputDevice(uid: String?) {
         player.setOutputDeviceUID(uid)
+    }
+
+    public func toggleMute() {
+        if isMuted {
+            isMuted = false
+            volume = volumeBeforeMute
+        } else {
+            volumeBeforeMute = volume
+            isMuted = true
+            volume = 0
+        }
     }
 
     private func playCurrent() {

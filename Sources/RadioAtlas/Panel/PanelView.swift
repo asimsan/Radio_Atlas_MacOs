@@ -10,7 +10,7 @@ struct PanelView: View {
             HeaderView(
                 searchQuery: $viewModel.searchQuery,
                 helpVisible: helpVisible,
-                onRandom: {},
+                onRandom: { viewModel.playRandom() },
                 onToggleHelp: { helpVisible.toggle() },
                 onClose: { NSApp.keyWindow?.close() }
             )

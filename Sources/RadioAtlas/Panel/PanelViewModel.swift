@@ -2,6 +2,12 @@ import Combine
 import Foundation
 import RadioAtlasCore
 
+enum SidebarTab: String, CaseIterable {
+    case world = "World"
+    case favorites = "Favorites"
+    case recent = "Recent"
+}
+
 @MainActor
 final class PanelViewModel: ObservableObject {
     @Published var stations: [Station] = []
@@ -9,6 +15,9 @@ final class PanelViewModel: ObservableObject {
         didSet { filteredStations = StationFilter.filter(stations, query: searchQuery) }
     }
     @Published var filteredStations: [Station] = []
+    @Published var selectedTab: SidebarTab = .world
+    @Published var outputDevices: [OutputDevice] = []
+    @Published var selectedOutputDeviceID: String?
 
     let playbackController: PlaybackController
     private(set) var countryLookup: CountryLookup?
@@ -19,6 +28,8 @@ final class PanelViewModel: ObservableObject {
     private let stateStore: UserStateStore
     private var userState: UserState
     private var cancellables: Set<AnyCancellable> = []
+    private let randomTuner = RandomTuner()
+    private let outputDeviceProvider: OutputDeviceProviding = CoreAudioOutputDeviceProvider()
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -61,8 +72,57 @@ final class PanelViewModel: ObservableObject {
     func play(_ station: Station) {
         guard let index = filteredStations.firstIndex(of: station) else { return }
         playbackController.setQueue(filteredStations, startAt: index)
+        objectWillChange.send()
         userState.recentStationIDs = ([station.id] + userState.recentStationIDs).prefix(50).map { $0 }
         try? stateStore.save(userState)
         Task { await client.registerClick(stationID: station.id) }
+    }
+
+    var displayedStations: [Station] {
+        switch selectedTab {
+        case .world:
+            return filteredStations
+        case .favorites:
+            return stations.filter { userState.favoriteStationIDs.contains($0.id) }
+        case .recent:
+            return userState.recentStationIDs.compactMap { id in stations.first { $0.id == id } }
+        }
+    }
+
+    func selectTab(_ tab: SidebarTab) {
+        selectedTab = tab
+    }
+
+    func isFavorite(_ station: Station) -> Bool {
+        userState.favoriteStationIDs.contains(station.id)
+    }
+
+    func toggleFavorite(_ station: Station) {
+        objectWillChange.send()
+        if userState.favoriteStationIDs.contains(station.id) {
+            userState.favoriteStationIDs.remove(station.id)
+        } else {
+            userState.favoriteStationIDs.insert(station.id)
+        }
+        try? stateStore.save(userState)
+    }
+
+    func refreshOutputDevices() {
+        outputDevices = [OutputDevice(id: "", name: "System default")] + outputDeviceProvider.listOutputDevices()
+        selectedOutputDeviceID = userState.outputDeviceUID ?? ""
+    }
+
+    func selectOutputDevice(_ device: OutputDevice) {
+        let uid: String? = device.id.isEmpty ? nil : device.id
+        selectedOutputDeviceID = device.id
+        playbackController.setOutputDevice(uid: uid)
+        objectWillChange.send()
+        userState.outputDeviceUID = uid
+        try? stateStore.save(userState)
+    }
+
+    func playRandom() {
+        guard let station = randomTuner.pickStation(from: filteredStations, avoiding: Set(userState.recentStationIDs)) else { return }
+        play(station)
     }
 }

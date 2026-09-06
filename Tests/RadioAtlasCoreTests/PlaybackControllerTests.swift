@@ -64,4 +64,18 @@ final class PlaybackControllerTests: XCTestCase {
 
         XCTAssertEqual(player.lastOutputDeviceUID, "airplay-1")
     }
+
+    func testToggleMuteSetsVolumeToZeroThenRestoresIt() {
+        let player = FakeStreamPlayer()
+        let controller = PlaybackController(player: player)
+        controller.volume = 0.8
+
+        controller.toggleMute()
+        XCTAssertTrue(controller.isMuted)
+        XCTAssertEqual(controller.volume, 0)
+
+        controller.toggleMute()
+        XCTAssertFalse(controller.isMuted)
+        XCTAssertEqual(controller.volume, 0.8)
+    }
 }

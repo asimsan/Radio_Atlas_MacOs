@@ -3,55 +3,88 @@ import SwiftUI
 
 struct SidebarView: View {
     @ObservedObject var viewModel: PanelViewModel
-    @State private var selectedTab: String = "World"
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
-                tabButton("World")
-                tabButton("Favorites")
-                tabButton("Recent")
+                ForEach(SidebarTab.allCases, id: \.self) { tab in
+                    Button(tab.rawValue) { viewModel.selectTab(tab) }
+                        .buttonStyle(.plain)
+                        .font(Palette.monoCaption)
+                        .foregroundStyle(viewModel.selectedTab == tab ? Palette.accent : Palette.foreground)
+                }
                 Spacer()
             }
             .padding(.horizontal, 16)
             .frame(height: 48)
             Rectangle().fill(Palette.divider).frame(height: 1)
 
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(viewModel.filteredStations) { station in
-                        VStack(spacing: 0) {
-                            StationRow(station: station, isPlaying: isPlaying(station)) {
-                                viewModel.play(station)
+            if viewModel.displayedStations.isEmpty {
+                Spacer()
+                Text(emptyStateText)
+                    .font(Palette.monoBody)
+                    .foregroundStyle(Palette.dim)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(viewModel.displayedStations) { station in
+                            VStack(spacing: 0) {
+                                StationRow(
+                                    station: station,
+                                    isPlaying: isPlaying(station),
+                                    isFavorite: viewModel.isFavorite(station),
+                                    onTap: { viewModel.play(station) },
+                                    onToggleFavorite: { viewModel.toggleFavorite(station) }
+                                )
+                                Rectangle().fill(Palette.divider).frame(height: 1)
                             }
-                            Rectangle().fill(Palette.divider).frame(height: 1)
                         }
                     }
                 }
             }
 
-            PlayerBarView(playbackController: viewModel.playbackController)
+            PlayerBarView(
+                playbackController: viewModel.playbackController,
+                isFavorite: currentStation.map(viewModel.isFavorite) ?? false,
+                onToggleFavorite: { if let station = currentStation { viewModel.toggleFavorite(station) } },
+                outputDevices: viewModel.outputDevices,
+                selectedOutputDeviceID: viewModel.selectedOutputDeviceID,
+                onSelectOutputDevice: viewModel.selectOutputDevice
+            )
         }
         .background(Palette.background)
+        .onAppear { viewModel.refreshOutputDevices() }
+    }
+
+    private var currentStation: Station? {
+        switch viewModel.playbackController.status {
+        case .idle: return nil
+        case .loading(let s), .playing(let s), .paused(let s), .failed(let s, _): return s
+        }
     }
 
     private func isPlaying(_ station: Station) -> Bool {
-        if case .playing(let playing) = viewModel.playbackController.status { return playing.id == station.id }
-        return false
+        currentStation?.id == station.id
     }
 
-    private func tabButton(_ title: String) -> some View {
-        Button(title) { selectedTab = title }
-            .buttonStyle(.plain)
-            .font(Palette.monoCaption)
-            .foregroundStyle(selectedTab == title ? Palette.accent : Palette.foreground)
+    private var emptyStateText: String {
+        switch viewModel.selectedTab {
+        case .world: return "No working stations found."
+        case .favorites: return "No favorites yet. Select a station and press F."
+        case .recent: return "No listening history yet."
+        }
     }
 }
 
 private struct StationRow: View {
     let station: Station
     let isPlaying: Bool
+    let isFavorite: Bool
     let onTap: () -> Void
+    let onToggleFavorite: () -> Void
 
     var body: some View {
         HStack {
@@ -67,6 +100,11 @@ private struct StationRow: View {
                     .lineLimit(1)
             }
             Spacer()
+            Button(action: onToggleFavorite) {
+                Image(systemName: isFavorite ? "star.fill" : "star")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(isFavorite ? Palette.favorite : Palette.foreground)
         }
         .padding(.horizontal, 16)
         .frame(height: 64)
