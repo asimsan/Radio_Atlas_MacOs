@@ -46,15 +46,36 @@ way to learn the design properly.
 
 ## Requirements
 
-- macOS 13 (Ventura) or later
-- Apple Silicon
-- [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/) —
-  `xcode-select --install`
+macOS 13 (Ventura) or later, on either Apple Silicon or Intel. The download is
+a universal binary; nothing else is needed to run it.
 
-## Install
+## Download
 
-There is no signed download yet, so you build it yourself. This takes about a
-minute and needs no Apple developer account:
+Grab the latest `RadioAtlas-*-universal.zip` from
+**[Releases](https://github.com/asimsan/Radio_Atlas_MacOs/releases)** — about
+1.4 MB — unzip it, and drag `RadioAtlas.app` into your Applications folder.
+
+**On first launch macOS will refuse to open it**, saying it cannot check the
+app for malicious software. That is expected: the app is signed, but not
+*notarized*, because notarizing requires a paid Apple Developer Program
+membership. To open it:
+
+1. Double-click the app once and dismiss the warning.
+2. Open **System Settings → Privacy & Security**, scroll to **Security**, and
+   click **Open Anyway** next to RadioAtlas.
+3. Confirm. Every launch after that is normal.
+
+Then look for the globe in your menu bar — the app has no Dock icon.
+
+If you would rather not do that, build it from source instead: a locally built
+app is signed on your own machine, never gets a quarantine flag, and so opens
+with no warning at all.
+
+## Build from source
+
+Needs the [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/)
+(`xcode-select --install`). Takes about a minute, and needs no Apple developer
+account:
 
 ```bash
 git clone https://github.com/asimsan/Radio_Atlas_MacOs.git
@@ -62,15 +83,14 @@ cd Radio_Atlas_MacOs
 ./scripts/make-app.sh --install
 ```
 
-That builds `RadioAtlas.app`, installs it to `~/Applications`, and registers
-it with Launch Services. Open it from Spotlight (`⌘-Space`, type "Radio
-Atlas") or from Launchpad.
+That builds `RadioAtlas.app`, installs it to `~/Applications`, and registers it
+with Launch Services. Open it from Spotlight (`⌘-Space`, type "Radio Atlas") or
+from Launchpad.
 
-Because you build it locally, macOS raises no Gatekeeper warning — the binary
-is signed on your own machine and never carries a quarantine flag.
-
-To build without installing, run `./scripts/make-app.sh`; the bundle is left
-in `.build/RadioAtlas.app`.
+To build without installing, run `./scripts/make-app.sh`; the bundle is left in
+`.build/RadioAtlas.app`. Add `--universal` for a binary that runs on both
+Apple Silicon and Intel, and `./scripts/make-release.sh` to produce a
+distributable zip.
 
 ## Using it
 

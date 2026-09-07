@@ -1,6 +1,11 @@
 #!/bin/bash
 # Packages the SwiftPM executable into RadioAtlas.app so it can be launched
-# from Spotlight/Launchpad. Pass --install to also copy it to ~/Applications.
+# from Spotlight/Launchpad.
+#
+#   --install     also copy it to ~/Applications and register it
+#   --universal   build for arm64 and x86_64, required for anything shipped to
+#                 other people (a plain build only runs on this Mac's own
+#                 architecture)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -11,9 +16,24 @@ INSTALL_DIR="$HOME/Applications"
 
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.1.0")
 
-echo "==> Building ($CONFIG)"
-swift build -c "$CONFIG"
-BIN_DIR=$(swift build -c "$CONFIG" --show-bin-path)
+INSTALL=0
+UNIVERSAL=0
+for arg in "$@"; do
+    case "$arg" in
+        --install)   INSTALL=1 ;;
+        --universal) UNIVERSAL=1 ;;
+        *) echo "unknown option: $arg" >&2; exit 2 ;;
+    esac
+done
+
+ARCH_ARGS=()
+if [[ $UNIVERSAL -eq 1 ]]; then
+    ARCH_ARGS=(--arch arm64 --arch x86_64)
+fi
+
+echo "==> Building ($CONFIG${ARCH_ARGS:+, universal})"
+swift build -c "$CONFIG" "${ARCH_ARGS[@]+"${ARCH_ARGS[@]}"}"
+BIN_DIR=$(swift build -c "$CONFIG" "${ARCH_ARGS[@]+"${ARCH_ARGS[@]}"}" --show-bin-path)
 
 APP="$ROOT/.build/RadioAtlas.app"
 echo "==> Assembling $APP"
@@ -26,8 +46,17 @@ cp "$BIN_DIR/RadioAtlas" "$APP/Contents/MacOS/RadioAtlas"
 # main bundle before falling back to Bundle.module. Copying SwiftPM's
 # resource bundle to the .app root instead would satisfy Bundle.module but
 # codesign rejects it there ("unsealed contents present in the bundle root").
-cp "$BIN_DIR/RadioAtlas_RadioAtlasCore.bundle/countries-110m.geojson" \
-   "$APP/Contents/Resources/"
+# SwiftPM lays the resource bundle out differently per build: a shallow
+# directory for a single architecture, a proper Contents/Resources bundle for
+# a universal one. Locate the file rather than assuming either shape, and fail
+# loudly -- a missing geojson renders the globe with no countries at all, with
+# no other symptom.
+GEOJSON=$(find "$BIN_DIR/RadioAtlas_RadioAtlasCore.bundle" -name countries-110m.geojson -print -quit)
+if [[ -z "$GEOJSON" ]]; then
+    echo "error: countries-110m.geojson not found in the built resource bundle" >&2
+    exit 1
+fi
+cp "$GEOJSON" "$APP/Contents/Resources/"
 
 echo "==> Generating icon"
 # Compiled explicitly rather than run as `swift make-icon.swift`: inside a
@@ -88,7 +117,18 @@ fi
 echo "==> Signing (ad-hoc)"
 codesign --force --sign - "$APP"
 
-if [[ "${1:-}" == "--install" ]]; then
+if [[ $UNIVERSAL -eq 1 ]]; then
+    # A one-architecture bundle silently fails to launch on the other kind of
+    # Mac, so make a shipped build prove it is fat before it goes anywhere.
+    archs=$(lipo -archs "$APP/Contents/MacOS/RadioAtlas")
+    if [[ "$archs" != *arm64* || "$archs" != *x86_64* ]]; then
+        echo "error: --universal asked for, but binary is: $archs" >&2
+        exit 1
+    fi
+    echo "==> Architectures: $archs"
+fi
+
+if [[ $INSTALL -eq 1 ]]; then
     echo "==> Installing to $INSTALL_DIR"
     mkdir -p "$INSTALL_DIR"
     rm -rf "$INSTALL_DIR/RadioAtlas.app"
