@@ -127,7 +127,7 @@ public final class StationSearchCoordinator: ObservableObject {
         do {
             let result = try await directory.stationsByCountryCode(code)
             guard generation == fetchGeneration, countryCode == code else { return }
-            list = result
+            list = StationDeduplicator.deduplicate(result)
             lastFetchedCode = code
             isLoadingCountry = false
         } catch {

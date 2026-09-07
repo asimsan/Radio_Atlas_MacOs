@@ -139,15 +139,27 @@ final class PanelViewModel: ObservableObject {
         }
     }
 
+    /// Favourites and recents resolve by id against `stations`, so anything
+    /// on those lists must survive deduplication or it would silently vanish
+    /// from the Favourites tab.
+    private var protectedStationIDs: Set<String> {
+        Set(userState.favoriteStationIDs).union(userState.recentStationIDs)
+    }
+
     func loadStations() async {
         if let cached = cache.read() {
-            stations = cached
-            coordinator.setBaseStations(cached)
+            let unique = StationDeduplicator.deduplicate(cached, protectedIDs: protectedStationIDs)
+            stations = unique
+            coordinator.setBaseStations(unique)
         }
         do {
             let fresh = try await client.topStations()
-            stations = fresh
-            coordinator.setBaseStations(fresh)
+            let unique = StationDeduplicator.deduplicate(fresh, protectedIDs: protectedStationIDs)
+            stations = unique
+            coordinator.setBaseStations(unique)
+            // The raw fetch is cached, not the deduplicated list: which
+            // stations are protected depends on favourites at read time, and
+            // a future change to the rule shouldn't need the cache cleared.
             try? cache.write(fresh)
             loadError = nil
         } catch {
