@@ -7,6 +7,8 @@ everything broadcasting from it. Stations come from the
 
 Native macOS app — Swift and SwiftUI, no external dependencies.
 
+![Radio Atlas: a rotatable globe of live radio stations with auroral bands over the pole, beside a searchable station list and player](assets/preview.png)
+
 ## Credit
 
 This project is a macOS reimplementation of
