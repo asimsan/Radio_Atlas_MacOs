@@ -6,6 +6,7 @@ struct HeaderView: View {
     let helpVisible: Bool
     let onRandom: () -> Void
     let onToggleHelp: () -> Void
+    let onToggleFloating: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -27,6 +28,10 @@ struct HeaderView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(Palette.foreground)
                     .help("Tune randomly (R)")
+                Button(action: onToggleFloating) { Image(systemName: "pip.enter") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Palette.foreground)
+                    .help("Toggle floating mini window")
                 Button(action: onToggleHelp) { Text("?").font(Palette.monoBody) }
                     .buttonStyle(.plain)
                     .foregroundStyle(helpVisible ? Palette.accent : Palette.foreground)

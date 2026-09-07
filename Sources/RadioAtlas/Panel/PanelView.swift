@@ -2,9 +2,10 @@ import RadioAtlasCore
 import SwiftUI
 
 struct PanelView: View {
-    @StateObject private var viewModel = PanelViewModel()
+    @ObservedObject var viewModel: PanelViewModel
     @State private var helpVisible = false
     @FocusState private var searchFieldFocused: Bool
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,6 +15,11 @@ struct PanelView: View {
                 helpVisible: helpVisible,
                 onRandom: { viewModel.playRandom() },
                 onToggleHelp: { helpVisible.toggle() },
+                onToggleFloating: {
+                    FloatingWindowManager.shared.toggle {
+                        openWindow(id: "mini")
+                    }
+                },
                 onClose: { NSApp.keyWindow?.close() }
             )
             if helpVisible {
