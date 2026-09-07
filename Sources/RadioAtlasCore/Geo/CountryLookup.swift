@@ -76,10 +76,24 @@ public extension CountryLookup {
     /// so app-target callers don't need to know the resource's bundle or
     /// filename.
     static func loadBundled() throws -> CountryLookup {
-        guard let url = Bundle.module.url(forResource: "countries-110m", withExtension: "geojson") else {
-            throw LoadError.resourceNotFound
-        }
+        guard let url = bundledResourceURL() else { throw LoadError.resourceNotFound }
         return try CountryLookup(geoJSONData: try Data(contentsOf: url))
+    }
+
+    /// `Bundle.module` resolves against `Bundle.main.bundleURL`, which for a
+    /// packaged `.app` is the bundle root -- a location `codesign` rejects as
+    /// unsealed content. So the shipped app puts the resource in the standard
+    /// `Contents/Resources` instead, and that is checked first here.
+    ///
+    /// `Bundle.module` is a lazy `static let` whose initialiser calls
+    /// `fatalError` when the resource bundle is missing, so it must only be
+    /// touched once the main-bundle lookup has come up empty -- as it does
+    /// under `swift run` and in tests, where it is the one that works.
+    private static func bundledResourceURL() -> URL? {
+        if let url = Bundle.main.url(forResource: "countries-110m", withExtension: "geojson") {
+            return url
+        }
+        return Bundle.module.url(forResource: "countries-110m", withExtension: "geojson")
     }
 }
 

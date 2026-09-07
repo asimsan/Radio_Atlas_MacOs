@@ -21,3 +21,17 @@ final class CountryLookupTests: XCTestCase {
         XCTAssertNil(code)
     }
 }
+
+// MARK: - Bundled resource loading
+
+/// `loadBundled()` resolves its resource differently under `swift run`/tests
+/// (SwiftPM's `Bundle.module`) than inside the packaged `.app`
+/// (`Bundle.main`'s `Contents/Resources`). This covers the former; breaking it
+/// would otherwise only surface as an empty globe at runtime, because
+/// `PanelViewModel` swallows the failure with `try?`.
+final class CountryLookupBundledTests: XCTestCase {
+    func testLoadBundledResolvesResourceAndParsesRegions() throws {
+        let lookup = try CountryLookup.loadBundled()
+        XCTAssertFalse(lookup.allRegions().isEmpty)
+    }
+}
