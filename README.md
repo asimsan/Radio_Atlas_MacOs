@@ -152,6 +152,52 @@ Added here: live auroral bands driven by NOAA SWPC's OVATION model, a station's
 local time and city, a sleep timer, hover tooltips, duplicate-station
 collapsing, and the floating mini window.
 
+## Missing a station?
+
+Radio Atlas has no station list of its own — it shows whatever the community-run
+[Radio Browser](https://www.radio-browser.info) directory holds. If a station
+you listen to is not there, it is almost always one of two things.
+
+**It is in the directory, but not in the world list.** The globe loads the
+5,000 most-played stations, and search filters that list rather than querying
+the whole directory. Anything less popular will not turn up by typing its name.
+**Click its country on the globe instead** — country browsing queries Radio
+Browser live and is not limited to the world list, so it will find stations the
+search box cannot.
+
+**It is not in the directory at all.** Anyone can add it, and it then works in
+every Radio Browser client, not just this one:
+
+1. Go to **[radio-browser.info/add](https://www.radio-browser.info/add)**.
+2. Fill in the station's name, its stream URL, country, and any genre tags.
+3. Submit it.
+
+The same site lets you correct an entry that is already there — a dead stream
+URL, a wrong country, a missing location. Fixing the country or coordinates is
+what puts a station on the globe, since stations with no coordinates cannot be
+drawn as a marker.
+
+Newly added stations show up here once the cached world list refreshes, which
+happens every 6 hours or whenever the app is restarted. A brand-new station
+starts with no play count, so it will appear under its country long before it
+is popular enough to reach the world list.
+
+## Data and privacy
+
+Station metadata and stream URLs come from Radio Browser and are community
+supplied. Playing a station calls Radio Browser's click-count endpoint, which
+is what the popularity ordering is built from. Favourites, listening history,
+and the cached station lists stay on your Mac, in
+`~/Library/Application Support/RadioAtlas/`.
+
+About 38% of the directory's streams are plain `http`, so the app permits
+unencrypted connections for media playback specifically — the directory API
+itself is always HTTPS. Those stream connections go directly to third-party
+servers and are not encrypted, so only play stations you trust.
+
+Map geometry comes from public-domain
+[Natural Earth](https://www.naturalearthdata.com) data.
+
 ## Development
 
 ```bash
