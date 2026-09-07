@@ -30,7 +30,14 @@ cp "$BIN_DIR/RadioAtlas_RadioAtlasCore.bundle/countries-110m.geojson" \
    "$APP/Contents/Resources/"
 
 echo "==> Generating icon"
-swift "$ROOT/scripts/make-icon.swift" "$APP/Contents/Resources/AppIcon.icns"
+# Compiled explicitly rather than run as `swift make-icon.swift`: inside a
+# package directory that form resolves to a package run and launches the app
+# itself, which never exits and hangs this script.
+ICON_BUILD=$(mktemp -d)
+cp "$ROOT/scripts/make-icon.swift" "$ICON_BUILD/main.swift"
+swiftc -O "$ICON_BUILD/main.swift" -o "$ICON_BUILD/make-icon"
+"$ICON_BUILD/make-icon" "$APP/Contents/Resources/AppIcon.icns"
+rm -rf "$ICON_BUILD"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
