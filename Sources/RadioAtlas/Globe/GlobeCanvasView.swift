@@ -146,8 +146,7 @@ struct GlobeCanvasView: View {
             .background(Palette.paneBackground)
             .background(
                 ScrollWheelCapture { deltaY in
-                    // Scroll up (negative deltaY in AppKit's convention) zooms in.
-                    interaction.applyZoom(delta: -deltaY * 0.02 * interaction.scale)
+                    interaction.applyWheelZoom(scrollingDeltaY: deltaY)
                 }
             )
             .gesture(
@@ -620,9 +619,18 @@ private extension Color {
 }
 
 /// SwiftUI has no first-class scroll-wheel gesture for an arbitrary view (only
-/// `ScrollView` content participates in scroll events); this transparent
-/// `NSViewRepresentable` overlay captures `scrollWheel(with:)` directly, per
-/// the plan's documented fallback.
+/// `ScrollView` content participates in scroll events), so this transparent
+/// `NSViewRepresentable` picks scroll events up itself.
+///
+/// It uses a local event monitor rather than an `NSResponder` override.
+/// Overriding `scrollWheel(with:)` looks like the obvious approach but never
+/// fires here: AppKit delivers a scroll to the view `hitTest` returns and then
+/// walks up the *responder chain*, and SwiftUI hit-tests its own content, so
+/// `hitTest` at the globe's centre returns SwiftUI's hosting view. As a
+/// `.background` this view is a sibling behind that content rather than an
+/// ancestor of it, so it appears nowhere on the chain and is skipped. A local
+/// monitor sees the event before view routing, so it does not care who wins
+/// hit-testing.
 private struct ScrollWheelCapture: NSViewRepresentable {
     let onScroll: (Double) -> Void
 
@@ -636,11 +644,38 @@ private struct ScrollWheelCapture: NSViewRepresentable {
         nsView.onScroll = onScroll
     }
 
+    static func dismantleNSView(_ nsView: ScrollCaptureView, coordinator: ()) {
+        nsView.stopMonitoring()
+    }
+
     final class ScrollCaptureView: NSView {
         var onScroll: ((Double) -> Void)?
+        private var monitor: Any?
 
-        override func scrollWheel(with event: NSEvent) {
-            onScroll?(Double(event.scrollingDeltaY))
+        /// Also called with a nil window when the view is torn out of the
+        /// hierarchy, which is what removes the monitor.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stopMonitoring()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self, let window = self.window else { return event }
+                // The panel and the floating mini window each host their own
+                // globe, so scope the monitor to this view's own window and
+                // to scrolls that land inside the globe -- otherwise one
+                // globe would zoom while the pointer was over the other, and
+                // scrolling the station list would zoom the globe.
+                guard event.window === window else { return event }
+                let point = self.convert(event.locationInWindow, from: nil)
+                guard self.bounds.contains(point) else { return event }
+                self.onScroll?(Double(event.scrollingDeltaY))
+                return nil
+            }
+        }
+
+        func stopMonitoring() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
         }
     }
 }

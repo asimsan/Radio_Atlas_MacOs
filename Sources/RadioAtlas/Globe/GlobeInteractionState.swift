@@ -14,8 +14,6 @@ final class GlobeInteractionState: ObservableObject {
     @Published var centerLongitude: Double = -20
     @Published var scale: Double = 1
 
-    static let minimumScale: Double = 0.72
-    static let maximumScale: Double = 24
     static let longitudeSensitivity: Double = 0.22
     static let latitudeSensitivity: Double = 0.18
 
@@ -124,7 +122,13 @@ final class GlobeInteractionState: ObservableObject {
     }
 
     func applyZoom(delta: Double) {
-        scale = max(Self.minimumScale, min(Self.maximumScale, scale + delta))
+        scale = GlobeZoom.clamp(scale: scale + delta)
+    }
+
+    /// Zoom from a scroll wheel / two-finger scroll, in AppKit's convention
+    /// (scroll up is a negative `scrollingDeltaY` and zooms in).
+    func applyWheelZoom(scrollingDeltaY: Double) {
+        scale = GlobeZoom.scaleAfterWheel(scale: scale, scrollingDeltaY: scrollingDeltaY)
     }
 
     /// Starts an eased glide to the target center, cancelling any kinetic
