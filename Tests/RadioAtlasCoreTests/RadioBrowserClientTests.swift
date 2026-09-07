@@ -43,6 +43,22 @@ final class RadioBrowserClientTests: XCTestCase {
         XCTAssertTrue(query.contains("limit=\(RadioBrowserClient.defaultTopStationsLimit)"), query)
     }
 
+    /// Radio Browser is a free community service and its API guidance asks
+    /// clients to identify themselves; the default URLSession agent does not.
+    func testRequestsIdentifyTheAppViaUserAgent() async throws {
+        StubURLProtocol.responseData = stationsJSON
+        let client = RadioBrowserClient(
+            session: StubURLProtocol.makeSession(),
+            baseURL: URL(string: "https://radio.test")!
+        )
+
+        _ = try await client.topStations()
+
+        let agent = StubURLProtocol.lastRequest?.value(forHTTPHeaderField: "User-Agent")
+        XCTAssertEqual(agent, RadioBrowserClient.userAgent)
+        XCTAssertTrue(agent?.hasPrefix("RadioAtlas/") ?? false, String(describing: agent))
+    }
+
     func testStationsByCountryCodeHitsExpectedPath() async throws {
         StubURLProtocol.responseData = stationsJSON
         let client = RadioBrowserClient(

@@ -1,6 +1,12 @@
 import Foundation
 
 public final class RadioBrowserClient {
+    /// Radio Browser is a free, community-run service, and its API guidance
+    /// asks clients to identify themselves so its operators can see who is
+    /// using it and contact them about misbehaviour. URLSession's default
+    /// agent says nothing, so every request carries this instead.
+    public static let userAgent = "RadioAtlas/0.1.0 (macOS; +https://github.com/asimsan/Radio_Atlas_MacOs)"
+
     private let session: URLSession
     private let baseURL: URL
 
@@ -49,12 +55,18 @@ public final class RadioBrowserClient {
 
     public func registerClick(stationID: String) async {
         let url = baseURL.appendingPathComponent("/json/url/\(stationID)")
-        _ = try? await session.data(from: url)
+        _ = try? await session.data(for: request(for: url))
     }
 
     private func fetchStations(url: URL) async throws -> [Station] {
-        let (data, _) = try await session.data(from: url)
+        let (data, _) = try await session.data(for: request(for: url))
         let raw = try JSONDecoder().decode([RawStation].self, from: data)
         return raw.compactMap(Station.init(raw:))
+    }
+
+    private func request(for url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        return request
     }
 }
