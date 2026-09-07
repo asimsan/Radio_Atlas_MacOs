@@ -55,6 +55,8 @@ struct PanelView: View {
         // search text on a near-black background). Forcing it here applies
         // to the whole subtree, including the help overlay and any popovers.
         .preferredColorScheme(.dark)
+        // ...which a MenuBarExtra panel window ignores, so enforce it directly.
+        .background(DarkAppearanceEnforcer())
         .radioAtlasKeyboardShortcuts(
             viewModel: viewModel,
             helpVisible: $helpVisible,

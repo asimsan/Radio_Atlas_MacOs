@@ -20,6 +20,10 @@ struct HeaderView: View {
                 TextField("Search station, country, or genre", text: $searchQuery)
                     .textFieldStyle(.plain)
                     .font(Palette.monoBody)
+                    // Every other control here sets its color explicitly; this
+                    // one inherited the environment's label color, which is
+                    // near-black under a Light system appearance.
+                    .foregroundStyle(Palette.foreground)
                     .padding(6)
                     .background(Palette.elevated)
                     .cornerRadius(4)

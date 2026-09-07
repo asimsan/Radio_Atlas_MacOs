@@ -23,6 +23,9 @@ final class FloatingWindowManager: ObservableObject {
         window.hidesOnDeactivate = false
         window.isMovableByWindowBackground = true
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Same reason as DarkAppearanceEnforcer: Palette is hardcoded dark, so
+        // system-drawn chrome must not fall back to light-mode colors.
+        window.appearance = NSAppearance(named: .darkAqua)
     }
 
     /// Shows or hides the mini window. The first call creates the window
