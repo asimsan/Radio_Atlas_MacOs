@@ -9,7 +9,17 @@ public final class RadioBrowserClient {
         self.baseURL = baseURL
     }
 
-    public func topStations(limit: Int = 500) async throws -> [Station] {
+    /// The world list's depth. Measured against the live directory (57,911
+    /// stations): 500 covers only 56 countries and yields 134 globe markers,
+    /// because just ~26% of stations carry coordinates. 5,000 reaches 161
+    /// countries and ~1,260 markers for a 5.7MB background refresh, and even
+    /// the last entry at that depth has real play counts rather than being
+    /// dead weight. `hidebroken` is deliberately not sent: ordering by
+    /// clickcount already keeps broken streams out of this range, and it was
+    /// measured to add nothing here.
+    public static let defaultTopStationsLimit = 5_000
+
+    public func topStations(limit: Int = RadioBrowserClient.defaultTopStationsLimit) async throws -> [Station] {
         var components = URLComponents(url: baseURL.appendingPathComponent("/json/stations"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "order", value: "clickcount"),

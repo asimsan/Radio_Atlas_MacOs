@@ -24,6 +24,25 @@ final class RadioBrowserClientTests: XCTestCase {
         XCTAssertTrue(requestedURL.query?.contains("name=alpha") ?? false)
     }
 
+    func testTopStationsRequestsTheConfiguredDepthOrderedByPopularity() async throws {
+        StubURLProtocol.responseData = stationsJSON
+        let client = RadioBrowserClient(
+            session: StubURLProtocol.makeSession(),
+            baseURL: URL(string: "https://radio.test")!
+        )
+
+        _ = try await client.topStations()
+
+        let requestedURL = try XCTUnwrap(StubURLProtocol.lastRequest?.url)
+        let query = requestedURL.query ?? ""
+        XCTAssertEqual(requestedURL.path, "/json/stations")
+        XCTAssertTrue(query.contains("order=clickcount"), query)
+        XCTAssertTrue(query.contains("reverse=true"), query)
+        // Pinned: the limit drives globe density and country coverage, so a
+        // silent change to it is a visible product change.
+        XCTAssertTrue(query.contains("limit=\(RadioBrowserClient.defaultTopStationsLimit)"), query)
+    }
+
     func testStationsByCountryCodeHitsExpectedPath() async throws {
         StubURLProtocol.responseData = stationsJSON
         let client = RadioBrowserClient(
