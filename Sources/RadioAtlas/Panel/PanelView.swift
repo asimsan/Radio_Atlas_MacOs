@@ -20,7 +20,8 @@ struct PanelView: View {
                         openWindow(id: "mini")
                     }
                 },
-                onClose: { NSApp.keyWindow?.close() }
+                onClose: { NSApp.keyWindow?.close() },
+                onQuit: quit
             )
             if helpVisible {
                 HelpOverlayView()
@@ -58,8 +59,14 @@ struct PanelView: View {
             viewModel: viewModel,
             helpVisible: $helpVisible,
             searchFieldFocus: $searchFieldFocused,
-            onClose: { NSApp.keyWindow?.close() }
+            onClose: { NSApp.keyWindow?.close() },
+            onQuit: quit
         )
         .task { await viewModel.loadStations() }
+    }
+
+    private func quit() {
+        viewModel.prepareForTermination()
+        NSApp.terminate(nil)
     }
 }

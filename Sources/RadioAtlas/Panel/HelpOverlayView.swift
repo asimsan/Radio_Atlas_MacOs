@@ -16,6 +16,7 @@ struct HelpOverlayView: View {
             ControlRow(input: "+ / -", action: "Change volume"),
             ControlRow(input: "ESC", action: "Back, clear, or close"),
             ControlRow(input: "?", action: "Show or hide controls"),
+            ControlRow(input: "CMD Q", action: "Quit"),
         ]),
         ControlSection(title: "MOUSE", rows: [
             ControlRow(input: "DRAG / FLICK", action: "Spin globe"),

@@ -314,4 +314,12 @@ final class PanelViewModel: ObservableObject {
             statusMessage = nil
         }
     }
+
+    /// Writes state that is otherwise saved on a debounce, so quitting right
+    /// after a change doesn't lose it. Volume is the one that matters: its
+    /// save is debounced 300ms, which a quit button makes easy to outrun.
+    func prepareForTermination() {
+        userState.volume = playbackController.volume
+        try? stateStore.save(userState)
+    }
 }

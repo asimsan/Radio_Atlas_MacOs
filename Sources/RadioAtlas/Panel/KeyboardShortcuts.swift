@@ -57,7 +57,8 @@ extension View {
         viewModel: PanelViewModel,
         helpVisible: Binding<Bool>,
         searchFieldFocus: FocusState<Bool>.Binding,
-        onClose: @escaping () -> Void
+        onClose: @escaping () -> Void,
+        onQuit: @escaping () -> Void
     ) -> some View {
         self
             .background(Button("") {
@@ -118,5 +119,13 @@ extension View {
                     onClose()
                 }
             }.keyboardShortcut(.escape, modifiers: []).hidden())
+            // Deliberately not gated on search focus, unlike the plain-letter
+            // shortcuts above: this carries a modifier, so per the routing
+            // documented at the top of this file it reaches the button rather
+            // than being inserted as text, and quitting should work whatever
+            // has focus. The app is .accessory, so there is no app menu
+            // supplying a Quit item -- this is the only keyboard route.
+            .background(Button("", action: onQuit)
+                .keyboardShortcut("q", modifiers: .command).hidden())
     }
 }

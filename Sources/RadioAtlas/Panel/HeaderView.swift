@@ -8,6 +8,7 @@ struct HeaderView: View {
     let onToggleHelp: () -> Void
     let onToggleFloating: () -> Void
     let onClose: () -> Void
+    let onQuit: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,6 +41,14 @@ struct HeaderView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(Palette.foreground)
                     .help("Close")
+                // Quit is separated from the dismiss button above: they sit
+                // next to each other but one hides the panel and the other
+                // ends playback and the process.
+                Rectangle().fill(Palette.divider).frame(width: 1, height: 20)
+                Button(action: onQuit) { Image(systemName: "power") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Palette.foreground)
+                    .help("Quit Radio Atlas (\u{2318}Q)")
             }
             .padding(.horizontal, 16)
             .frame(height: 68)
