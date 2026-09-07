@@ -10,8 +10,10 @@ struct MiniView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Drag header (the window background is draggable too, so this
-            // row is mostly branding + window controls).
+            // Drag header. This row sits exactly on the window's 32pt
+            // transparent title bar, which is what moves the window — the
+            // rest of the window is deliberately not draggable so that
+            // dragging the globe rotates it.
             HStack(spacing: 8) {
                 Text("RADIO ATLAS")
                     .font(Palette.monoCaption).bold()
@@ -60,7 +62,8 @@ struct MiniView: View {
                 onSelectOutputDevice: viewModel.selectOutputDevice,
                 onRetry: { viewModel.retryFailedStation() },
                 sleepFireDate: viewModel.sleepFireDate,
-                onScheduleSleep: { viewModel.scheduleSleep(minutes: $0) }
+                onScheduleSleep: { viewModel.scheduleSleep(minutes: $0) },
+                nameLineLimit: 2
             )
         }
         .frame(minWidth: 320, idealWidth: 400, maxWidth: .infinity,

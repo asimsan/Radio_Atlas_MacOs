@@ -21,7 +21,14 @@ final class FloatingWindowManager: ObservableObject {
         didApplyStyle = true
         window.level = .floating
         window.hidesOnDeactivate = false
-        window.isMovableByWindowBackground = true
+        // Deliberately NOT movable by background. AppKit decides a
+        // background drag from the hit view's `mouseDownCanMoveWindow`, and
+        // over SwiftUI content that is true — so with this enabled, dragging
+        // the globe moved the window instead of spinning the globe, and the
+        // mini window's globe could not be rotated at all. The window stays
+        // draggable by its transparent title bar, measured at exactly 32pt,
+        // which is precisely MiniView's header row.
+        window.isMovableByWindowBackground = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // Same reason as DarkAppearanceEnforcer: Palette is hardcoded dark, so
         // system-drawn chrome must not fall back to light-mode colors.
