@@ -57,11 +57,29 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <!-- Menu bar app: no Dock icon, matching setActivationPolicy(.accessory).
          Spotlight and Launchpad still index and launch it. -->
     <key>LSUIElement</key>               <true/>
+    <!-- 38% of the radio-browser directory's stream URLs are cleartext http,
+         and App Transport Security blocks those outright once the binary is
+         bundled -- which is why stations that played under 'swift run' stopped
+         working in the packaged app. The exception is scoped to AVFoundation
+         media rather than NSAllowsArbitraryLoads: the directory API is HTTPS
+         and stays protected, and nothing else is fetched over the network. -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoadsForMedia</key> <true/>
+    </dict>
 </dict>
 </plist>
 PLIST
 
 printf 'APPL????' > "$APP/Contents/PkgInfo"
+
+# Guard the ATS exception: without it the app silently cannot play the ~38%
+# of stations served over cleartext http, with no error beyond a failed play.
+if ! /usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsArbitraryLoadsForMedia" \
+     "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+    echo "error: Info.plist is missing the ATS media exception" >&2
+    exit 1
+fi
 
 # Ad-hoc signature so Launch Services and TCC treat this as a stable identity.
 # The resource bundle is deliberately left unsigned: SwiftPM emits it as a
