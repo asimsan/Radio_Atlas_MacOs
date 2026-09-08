@@ -5,7 +5,7 @@ public final class RadioBrowserClient {
     /// asks clients to identify themselves so its operators can see who is
     /// using it and contact them about misbehaviour. URLSession's default
     /// agent says nothing, so every request carries this instead.
-    public static let userAgent = "RadioAtlas/0.1.0 (macOS; +https://github.com/asimsan/Radio_Atlas_MacOs)"
+    public static let userAgent = "RadioAtlas/0.1.1 (macOS; +https://github.com/asimsan/Radio_Atlas_MacOs)"
 
     private let session: URLSession
     private let baseURL: URL

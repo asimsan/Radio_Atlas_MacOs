@@ -13,6 +13,16 @@ ROOT="$PWD"
 VERSION="${1:-$(git describe --tags --always 2>/dev/null || echo 0.1.0)}"
 OUT="$ROOT/.build/release-artifacts"
 
+# The User-Agent version is a hand-maintained string; catch it drifting from
+# the release it ships in, since Radio Browser's operators read it.
+UA_VERSION=$(sed -n 's/.*"RadioAtlas\/\([0-9.]*\).*/\1/p' \
+    "$ROOT/Sources/RadioAtlasCore/Networking/RadioBrowserClient.swift")
+if [[ "${VERSION#v}" != "$UA_VERSION" ]]; then
+    echo "error: releasing ${VERSION#v} but the User-Agent says $UA_VERSION" >&2
+    echo "       update RadioBrowserClient.userAgent" >&2
+    exit 1
+fi
+
 "$ROOT/scripts/make-app.sh" --universal
 
 APP="$ROOT/.build/RadioAtlas.app"
