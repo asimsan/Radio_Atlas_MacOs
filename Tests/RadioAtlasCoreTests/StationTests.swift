@@ -20,6 +20,53 @@ final class StationTests: XCTestCase {
     }
     """.data(using: .utf8)!
 
+    private func json(urlResolved: String, url: String?) -> Data {
+        let urlField = url.map { ", \"url\": \"\($0)\"" } ?? ""
+        return """
+        {
+            "stationuuid": "abc-123", "name": "Test FM",
+            "url_resolved": "\(urlResolved)"\(urlField),
+            "homepage": null, "favicon": "", "tags": "", "countrycode": "NP",
+            "country": "Nepal", "geo_lat": null, "geo_long": null,
+            "votes": 0, "clickcount": 6, "bitrate": 0
+        }
+        """.data(using: .utf8)!
+    }
+
+    /// Radio Browser leaves `url_resolved` empty until its own resolver has
+    /// followed the station's URL, while `url` still works. Butwal FM in Nepal
+    /// is one such station, and dropping it lost it from the app entirely.
+    func testFallsBackToUrlWhenResolvedURLIsEmpty() throws {
+        let raw = try JSONDecoder().decode(
+            RawStation.self,
+            from: json(urlResolved: "", url: "http://streaming.softnep.net:10994/;stream.nsv")
+        )
+        let station = try XCTUnwrap(Station(raw: raw))
+        XCTAssertEqual(station.streamURL.absoluteString, "http://streaming.softnep.net:10994/;stream.nsv")
+    }
+
+    func testPrefersResolvedURLWhenBothArePresent() throws {
+        let raw = try JSONDecoder().decode(
+            RawStation.self,
+            from: json(urlResolved: "https://resolved.example/s", url: "https://raw.example/s")
+        )
+        let station = try XCTUnwrap(Station(raw: raw))
+        XCTAssertEqual(station.streamURL.absoluteString, "https://resolved.example/s")
+    }
+
+    func testReturnsNilWhenNeitherURLIsUsable() throws {
+        let raw = try JSONDecoder().decode(RawStation.self, from: json(urlResolved: "", url: ""))
+        XCTAssertNil(Station(raw: raw))
+    }
+
+    /// `url` is absent from older cached payloads, so decoding must not require it.
+    func testDecodesWhenUrlFieldIsAbsentEntirely() throws {
+        let raw = try JSONDecoder().decode(
+            RawStation.self, from: json(urlResolved: "https://only.example/s", url: nil)
+        )
+        XCTAssertNotNil(Station(raw: raw))
+    }
+
     func testDecodesRawStationAndMapsToStation() throws {
         let raw = try JSONDecoder().decode(RawStation.self, from: sampleJSON)
         let station = try XCTUnwrap(Station(raw: raw))

@@ -22,6 +22,8 @@ public struct RawStation: Decodable {
     public let stationuuid: String
     public let name: String
     public let url_resolved: String
+    /// Optional: absent from station lists cached before this field was read.
+    public let url: String?
     public let homepage: String?
     public let favicon: String?
     public let tags: String
@@ -36,7 +38,14 @@ public struct RawStation: Decodable {
 
 public extension Station {
     init?(raw: RawStation) {
-        guard !raw.stationuuid.isEmpty, let streamURL = URL(string: raw.url_resolved) else { return nil }
+        // Radio Browser leaves `url_resolved` empty until its own resolver has
+        // followed the station's URL; the raw `url` still plays. Requiring the
+        // resolved one silently dropped those stations from every list, which
+        // is how Butwal FM (Nepal) went missing while the website showed it.
+        // It skews towards smaller stations: 16 of the top 10,000, but a
+        // higher share further down the directory.
+        let candidateURL = raw.url_resolved.isEmpty ? (raw.url ?? "") : raw.url_resolved
+        guard !raw.stationuuid.isEmpty, let streamURL = URL(string: candidateURL) else { return nil }
         id = raw.stationuuid
         name = raw.name
         self.streamURL = streamURL
