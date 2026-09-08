@@ -47,15 +47,31 @@ final class AVPlayerStreamPlayer: StreamPlaying {
         // the UI shows "Loading…" immediately rather than stale info from
         // whatever was playing before while the new stream buffers.
         onStatusChange?(.loading(station))
+        start(station: station, url: station.streamURL)
+    }
 
-        let item = AVPlayerItem(url: station.streamURL)
+    /// - Parameter isTLSRetry: set only by the retry below, so a stream that
+    ///   fails over TLS too reports the failure instead of looping.
+    private func start(station: Station, url: URL, isTLSRetry: Bool = false) {
+        let item = AVPlayerItem(url: url)
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard let self, let station = self.currentStation else { return }
             DispatchQueue.main.async {
+                // A station switched to mid-load owns the player now; a late
+                // callback from the previous item must not speak for it.
+                guard self.currentStation?.id == station.id else { return }
                 switch item.status {
                 case .readyToPlay:
                     self.onStatusChange?(.playing(station))
                 case .failed:
+                    // Some directory entries list an http URL for a port that
+                    // only accepts TLS, and the server rejects the cleartext
+                    // request outright. Browsers auto-upgrade and so never
+                    // show this; retry the same way before giving up.
+                    if !isTLSRetry, let secure = StreamURL.tlsUpgraded(url) {
+                        self.start(station: station, url: secure, isTLSRetry: true)
+                        return
+                    }
                     self.onStatusChange?(.failed(station, message: item.error?.localizedDescription ?? "Playback failed"))
                 default:
                     break
